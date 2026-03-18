@@ -1,0 +1,21 @@
+int main() {
+	int x;
+	double y;
+	string nombre;
+	bool activo;
+	x = 10;
+	y = 3.14;
+	nombre = "Gabriel";
+	true = activo;
+	cout << "Hola mundo" ;
+	cin >> x;
+	if (x > 5) {
+		cout << x ;
+	} else {
+		cout << "menor" ;
+	}
+	while (x > 0) {
+		x = 1;
+	}
+	return 0;
+}
