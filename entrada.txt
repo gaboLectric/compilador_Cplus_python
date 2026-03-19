@@ -6,7 +6,7 @@ int main() {
 	x = 10;
 	y = 3.14;
 	nombre = "Gabriel";
-	true = activo;
+	activo = true;
 	cout << "Hola mundo" ;
 	cin >> x;
 	if (x > 5) {
