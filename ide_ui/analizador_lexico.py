@@ -43,18 +43,25 @@ class CompiladorCpp:
 
     PALABRAS_RESERVADAS = {
         'main', 'if', 'else', 'while', 'for', 'do', 'switch', 'case',
-        'break', 'continue', 'return', 'void', 'true', 'false',
+        'break', 'continue', 'void', 'true', 'false',
         'cout', 'cin', 'endl', 'include', 'using', 'namespace', 'std',
+    }
+
+    PALABRAS_CLAVE = {
+        'import', 'public', 'private', 'return'
     }
 
     PATRON_TOKENS = re.compile(r"""
         (?P<Numero>\d+(\.\d+)?)        |
         (?P<Cadena>"[^"]*")            |
         (?P<Caracter>'[^']*')          |
+        (?P<Comentario>//.*|/\*[\s\S]*?\*/) |
         (?P<Identificador>[a-zA-Z_]\w*)|
         (?P<PuntoComa>;)               |
         (?P<Insercion><<)              |
         (?P<Extraccion>>>)             |
+        (?P<And>&&)                    |
+        (?P<Or>\|\|)                   |
         (?P<Asignacion>=)              |
         (?P<Suma>\+)                   |
         (?P<Resta>-)                   |
@@ -64,6 +71,8 @@ class CompiladorCpp:
         (?P<ParenCierra>\))            |
         (?P<LlaveAbre>\{)             |
         (?P<LlaveCierra>\})            |
+        (?P<CorcheteAbre>\[)           |
+        (?P<CorcheteCierra>\])         |
         (?P<Espacio>\s+)              |
         (?P<Invalido>.)
     """, re.VERBOSE)
@@ -85,11 +94,16 @@ class CompiladorCpp:
             valor = match.group()
             if tipo == 'Espacio':
                 continue
+            if tipo == 'Comentario':
+                tokens.append(TokenCpp(tipo, valor))
+                continue
             if tipo == 'Identificador':
                 if valor in self.TIPOS_DATOS or valor == 'void':
                     tipo = 'TipoDato'
                 elif valor in ('true', 'false'):
                     tipo = 'Booleano'
+                elif valor in self.PALABRAS_CLAVE:
+                    tipo = 'PalabraClave'
                 elif valor in self.PALABRAS_RESERVADAS:
                     tipo = 'PalabraReservada'
                 else:
@@ -116,6 +130,9 @@ class CompiladorCpp:
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveAbre':
             return ('apertura', f"{linea_limpia} // apertura de bloque", True)
+            
+        if len(tokens) == 1 and tokens[0].tipo == 'Comentario':
+            return ('comentario', f"{linea_limpia}", True)
 
         if self._es_patron_main(tokens):
             tipo_ret = tokens[0].valor
@@ -143,7 +160,25 @@ class CompiladorCpp:
         if self._es_patron_asignacion(tokens):
             nombre_var = tokens[0].valor
             valor = tokens[2].valor
+            tipo_val = tokens[2].tipo
             if self.tabla_simbolos.existe(nombre_var):
+                var_info = self.tabla_simbolos.obtener(nombre_var)
+                tipo_var = var_info['tipo']
+                
+                # Regla semántica: Utilización de tipos de datos
+                error_tipo = False
+                if tipo_var in ('int', 'double', 'float') and tipo_val not in ('Numero', 'Variable', 'Booleano'):
+                    error_tipo = True
+                elif tipo_var == 'string' and tipo_val not in ('Cadena', 'Variable'):
+                    error_tipo = True
+                elif tipo_var == 'char' and tipo_val not in ('Caracter', 'Variable'):
+                    error_tipo = True
+                elif tipo_var == 'bool' and tipo_val not in ('Booleano', 'Numero', 'Variable'):
+                    error_tipo = True
+                    
+                if error_tipo:
+                    return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_var}, entregado {tipo_val}')}", False)
+
                 self.tabla_simbolos.asignar_valor(nombre_var, valor)
                 return ('asignacion', f"{linea_limpia} // asignación: {nombre_var} = {valor}", True)
             else:
@@ -161,6 +196,8 @@ class CompiladorCpp:
 
         # if ( expr ) {
         if self._es_patron_if(tokens):
+            err = self._validar_flujo_semantico(tokens)
+            if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(5, err)}", False)
             return ('if', f"{linea_limpia} // estructura condicional if", True)
 
         # else {  o  } else {
@@ -169,10 +206,14 @@ class CompiladorCpp:
 
         # while ( expr ) {
         if self._es_patron_while(tokens):
+            err = self._validar_ciclo_semantico(tokens)
+            if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err)}", False)
             return ('while', f"{linea_limpia} // ciclo while", True)
 
         # for ( ... ) {
         if self._es_patron_for(tokens):
+            err = self._validar_ciclo_semantico(tokens)
+            if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err)}", False)
             return ('for', f"{linea_limpia} // ciclo for", True)
 
         # return expr ;
@@ -281,6 +322,7 @@ class CompiladorCpp:
     def validar_parentesis(self, tokens):
         paren = 0
         llaves = 0
+        corch = 0
         for token in tokens:
             if token.tipo == 'ParenAbre': paren += 1
             elif token.tipo == 'ParenCierra':
@@ -292,9 +334,57 @@ class CompiladorCpp:
                 llaves -= 1
                 if llaves < 0:
                     return "Error: se encontró '}' sin un '{' correspondiente."
+            elif token.tipo == 'CorcheteAbre': corch += 1
+            elif token.tipo == 'CorcheteCierra':
+                corch -= 1
+                if corch < 0:
+                    return "Error: se encontró ']' sin un '[' correspondiente."
         errores = []
         if paren > 0: errores.append(f"faltan {paren} paréntesis de cierre")
         if llaves > 0: errores.append(f"faltan {llaves} llaves de cierre")
+        if corch > 0: errores.append(f"faltan {corch} corchetes de cierre")
         if errores:
             return "Error: " + ", ".join(errores) + "."
         return "Paréntesis y llaves balanceados correctamente."
+        
+    def _validar_flujo_semantico(self, tokens):
+        """ Control de flujo: asegura que la condición if/while sea válida."""
+        en_parentesis = False
+        paren_nivel = 0
+        elementos_condicion = 0
+        for t in tokens:
+            if t.tipo == 'ParenAbre':
+                paren_nivel += 1
+                en_parentesis = True
+                continue
+            if t.tipo == 'ParenCierra':
+                paren_nivel -= 1
+                if paren_nivel == 0:
+                    en_parentesis = False
+                continue
+                
+            if en_parentesis:
+                elementos_condicion += 1
+                if t.tipo == 'Variable' and not self.tabla_simbolos.existe(t.valor):
+                    return f"Variable '{t.valor}' en condición no declarada"
+                if t.tipo in ('TipoDato', 'PalabraReservada', 'PalabraClave'):
+                    return f"Léxico inválido en condición ('{t.valor}')"
+                    
+        if elementos_condicion == 0:
+            return "Condición de flujo vacía"
+        return None
+
+    def _validar_ciclo_semantico(self, tokens):
+        """ Control de ciclos: asegura estructura mínima coherente."""
+        # Se reutiliza parte de la lógica de flujo
+        if tokens[0].valor == 'while':
+            return self._validar_flujo_semantico(tokens)
+        elif tokens[0].valor == 'for':
+            # Contar variables no declaradas o puntos y coma faltantes si no se declara var internal.
+            vars_dentro = [t for t in tokens if t.tipo == 'Variable']
+            # Ojo: For permite crear variables nuevas y demás, 
+            # esta validación es básica, garantizando que el if hay algo de cuerpo de for.
+            if len(tokens) <= 6:
+                return "Estructura de for incompleta"
+        return None
+

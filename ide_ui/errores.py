@@ -18,7 +18,10 @@ def obtener_error_semantico(codigo, extra=""):
     mensajes = {
         1: "VARIABLE NO DECLARADA",
         2: "VARIABLE YA DECLARADA",
-        3: "AMBIGÜEDAD"
+        3: "AMBIGÜEDAD",
+        4: "INCOMPATIBILIDAD DE TIPOS",
+        5: "USO INCORRECTO DE CONTROL DE FLUJO",
+        6: "ESTRUCTURA DE CICLO NO COHERENTE"
     }
     base = f"ERROR SEMÁNTICO {codigo}: {mensajes.get(codigo, 'NO DOCUMENTADO')}"
     if extra:
