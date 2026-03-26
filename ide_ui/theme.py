@@ -471,7 +471,7 @@ def apply_global_theme(app):
         background-color: {c['bg_darkest']};
         color: {c['accent_green']};
         font-family: "JetBrains Mono", "Fira Code", Monospace;
-        font-size: 11px;
+        font-size: 14px;
         padding: 8px;
     }}
     
@@ -479,7 +479,7 @@ def apply_global_theme(app):
         background-color: {c['bg_darkest']};
         color: {c['accent_cyan']};
         font-family: "JetBrains Mono", "Fira Code", Monospace;
-        font-size: 11px;
+        font-size: 14px;
         padding: 8px;
     }}
     
@@ -487,7 +487,7 @@ def apply_global_theme(app):
         background-color: {c['bg_darkest']};
         color: {c['accent_orange']};
         font-family: "JetBrains Mono", "Fira Code", Monospace;
-        font-size: 11px;
+        font-size: 14px;
         padding: 8px;
     }}
     
@@ -495,7 +495,7 @@ def apply_global_theme(app):
         background-color: {c['bg_darkest']};
         color: {c['accent_purple']};
         font-family: "JetBrains Mono", "Fira Code", Monospace;
-        font-size: 11px;
+        font-size: 14px;
         padding: 8px;
     }}
 
@@ -503,7 +503,7 @@ def apply_global_theme(app):
         background-color: {c['bg_darkest']};
         color: {c['accent_red']};
         font-family: "JetBrains Mono", "Fira Code", Monospace;
-        font-size: 11px;
+        font-size: 14px;
         padding: 8px;
     }}
 

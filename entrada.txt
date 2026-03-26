@@ -1,4 +1,5 @@
 int main() {
+
 	int x;
 	double y;
 	string nombre;
@@ -9,13 +10,17 @@ int main() {
 	activo = true;
 	cout << "Hola mundo" ;
 	cin >> x;
-	if (x > 5) {
+	if (5 > x)  {
 		cout << x ;
 	} else {
 		cout << "menor" ;
 	}
 	while (x > 0) {
 		x = 1;
+	}
+
+	for ( int z = 0; z < 5; z++ ) {
+		cout << z;
 	}
 	return 0;
 }

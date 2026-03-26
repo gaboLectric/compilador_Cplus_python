@@ -73,6 +73,7 @@ class CompiladorCpp:
         (?P<LlaveCierra>\})            |
         (?P<CorcheteAbre>\[)           |
         (?P<CorcheteCierra>\])         |
+        (?P<DosPuntos>:)               |
         (?P<Espacio>\s+)              |
         (?P<Invalido>.)
     """, re.VERBOSE)
@@ -220,6 +221,35 @@ class CompiladorCpp:
         if self._es_patron_return(tokens):
             valor_ret = ' '.join(t.valor for t in tokens[1:-1])
             return ('return', f"{linea_limpia} // retorno: {valor_ret}", True)
+
+        # Reglas Semánticas switch/case
+        if len(tokens) >= 4 and tokens[0].tipo == 'ParenAbre' and tokens[1].tipo == 'Variable' and tokens[2].tipo == 'ParenCierra' and tokens[3].valor == 'switch':
+            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto, esperaba switch(variable)')}", False)
+
+        if len(tokens) >= 2 and tokens[0].valor == 'break' and tokens[1].valor == 'case':
+            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: break case')}", False)
+            
+        if len(tokens) >= 3 and tokens[0].valor == 'case' and tokens[1].valor == 'break':
+            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: case break')}", False)
+
+        # Reglas Sintácticas switch/case
+        if tokens[0].valor == 'switch':
+            if len(tokens) < 5 or tokens[4].tipo != 'LlaveAbre':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(9)} para switch", False)
+            if tokens[1].tipo != 'ParenAbre' or tokens[3].tipo != 'ParenCierra':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(4)} o '(' faltante", False)
+            if tokens[2].tipo != 'Variable':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(5)} para switch", False)
+            return ('switch', f"{linea_limpia} // estructura de control switch", True)
+            
+        if tokens[0].valor == 'case':
+            if len(tokens) < 2 or tokens[1].tipo != 'DosPuntos':
+                return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después de case", False)
+            if tokens[-1].tipo != 'PuntoComa':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(1)} al final de case", False)
+            if tokens[-2].valor != 'break':
+                return ('error', f"{linea_limpia} // Error sintáctico: la instrucción case debe terminar con break;", False)
+            return ('case', f"{linea_limpia} // caso de switch", True)
 
         return ('no_identificado', f"{linea_limpia} // {obtener_error_sintactico(6)}", False)
 

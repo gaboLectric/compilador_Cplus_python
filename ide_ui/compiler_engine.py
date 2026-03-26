@@ -181,9 +181,9 @@ class CompilerEngine:
             # Buscar líneas con operadores aritméticos que parezcan expresiones
             if any(op in linea_limpia for op in ['+', '-', '*', '/']) \
                and linea_limpia not in ('{', '}'):
-                # No considerar declaraciones como expresiones
+                # No considerar declaraciones o palabras reservadas (for, while, if) como expresiones
                 tokens_check = self.compilador.tokenizar(linea_limpia)
-                if tokens_check and tokens_check[0].tipo != 'TipoDato':
+                if tokens_check and tokens_check[0].tipo != 'TipoDato' and tokens_check[0].tipo not in ('PalabraReservada', 'PalabraClave'):
                     # Quitar ; al final si existe para parsear la expresión
                     expr = linea_limpia.rstrip(';').strip()
                     # Quitar asignación si es x = expr
