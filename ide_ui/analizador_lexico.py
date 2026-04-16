@@ -121,21 +121,33 @@ class CompiladorCpp:
 
     def analizar_linea(self, linea, num_linea):
         linea_limpia = linea.strip()
-        if not linea_limpia or linea_limpia.startswith('//'):
+        if not linea_limpia:
             return ('vacia', None, None)
 
-        tokens = self.tokenizar(linea_limpia)
-        if not tokens:
+        tokens_todos = self.tokenizar(linea_limpia)
+        if not tokens_todos:
             return ('vacia', None, None)
+
+        # Filtrar comentarios para el análisis lógico, pero conservarlos para el reporte
+        tokens = [t for t in tokens_todos if t.tipo != 'Comentario']
+        
+        if not tokens: # Solo había comentarios
+            return ('comentario', f"{linea_limpia}", True)
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveCierra':
             return ('cierre', f"{linea_limpia} // cierre de bloque", True)
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveAbre':
             return ('apertura', f"{linea_limpia} // apertura de bloque", True)
-            
-        if len(tokens) == 1 and tokens[0].tipo == 'Comentario':
-            return ('comentario', f"{linea_limpia}", True)
+
+        # Validación: No usar palabras reservadas como identificadores
+        for t in tokens:
+            if t.tipo == 'PalabraReservada' or t.tipo == 'TipoDato':
+                # Si está en una posición donde debería haber una variable
+                # Ejemplo: int if;  -> tokens[1] es PalabraReservada
+                if len(tokens) >= 2 and tokens[0].tipo == 'TipoDato' and t == tokens[1]:
+                    return ('error', f"{linea_limpia} // {obtener_error_semantico(5, f'No puedes usar la palabra reservada {t.valor} como nombre de variable')}", False)
+
 
         if self._es_patron_main(tokens):
             tipo_ret = tokens[0].valor
@@ -182,6 +194,11 @@ class CompiladorCpp:
                 if error_tipo:
                     return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_var}, entregado {tipo_val}')}", False)
 
+                # Regla semántica: si el valor es otra variable, verificar existencia
+                if tipo_val == 'Variable':
+                    if not self.tabla_simbolos.existe(valor):
+                        return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
+
                 self.tabla_simbolos.asignar_valor(nombre_var, valor)
                 return ('asignacion', f"{linea_limpia} // asignación: {nombre_var} = {valor}", True)
             else:
@@ -218,12 +235,22 @@ class CompiladorCpp:
              return ('error', f"{linea_limpia} // {obtener_error_semantico(6, 'Orden incorrecto, keyword for desplazado')}", False)
 
         if tokens[0].valor == 'for':
-            err_sint, err_sem = self._validar_for_sintactico(tokens)
+            err_sint, err_sem = self._validar_for_sintactico(tokens, num_linea)
             if err_sint:
                 return ('error', f"{linea_limpia} // Error sintáctico: {err_sint}", False)
             if err_sem:
                  return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err_sem)}", False)
             return ('for', f"{linea_limpia} // ciclo for", True)
+
+        # Incremento independiente: variable++; o ++variable;
+        if len(tokens) >= 2 and tokens[-1].tipo == 'PuntoComa':
+            if (tokens[0].tipo == 'Variable' and tokens[1].tipo == 'Incremento') or \
+               (tokens[0].tipo == 'Incremento' and tokens[1].tipo == 'Variable'):
+                nombre_var = tokens[0].valor if tokens[0].tipo == 'Variable' else tokens[1].valor
+                if self.tabla_simbolos.existe(nombre_var):
+                    return ('incremento', f"{linea_limpia} // operación de incremento/decremento", True)
+                else:
+                    return ('error', f"{linea_limpia} // {obtener_error_semantico(1, nombre_var)}", False)
 
         # return expr ;
         if self._es_patron_return(tokens):
@@ -323,7 +350,7 @@ class CompiladorCpp:
         if len(tokens) != 4:
             return False
         return (tokens[0].tipo == 'Variable' and tokens[1].tipo == 'Asignacion' and
-                tokens[2].tipo in ('Numero', 'Cadena', 'Caracter', 'Booleano') and
+                tokens[2].tipo in ('Numero', 'Cadena', 'Caracter', 'Booleano', 'Variable') and
                 tokens[3].tipo == 'PuntoComa')
 
     # ─── PATRONES NUEVOS: cout, cin, if, else, while, for, return ───
@@ -443,7 +470,7 @@ class CompiladorCpp:
             return self._validar_flujo_semantico(tokens)
         return None
 
-    def _validar_for_sintactico(self, tokens):
+    def _validar_for_sintactico(self, tokens, linea_actual=0):
         """ Control de sintaxis y semántica para for """
         if len(tokens) < 3 or tokens[1].tipo != 'ParenAbre':
              return ("falta '(' en for", None)
@@ -480,17 +507,31 @@ class CompiladorCpp:
             return ("condicion1 incompleta, esperaba <TipoDato> <Variable> = <valor>", None)
         if cond1[0].tipo != 'TipoDato' or cond1[1].tipo != 'Variable' or cond1[2].tipo != 'Asignacion' or cond1[3].tipo not in ('Numero', 'Variable', 'Caracter'):
             return ("condicion1 mal formada, esperaba <TipoDato> <Variable> = <valor>", None)
+        
+        # --- NUEVO: Registrar variable del for en la tabla de símbolos ---
+        tipo_var = cond1[0].valor
+        nombre_var = cond1[1].valor
+        self.tabla_simbolos.agregar(nombre_var, tipo_var, linea_actual)
             
         # cond2: <Variable> <Comparacion> <Numero/...>
         if len(cond2) < 3:
             return ("condicion2 incompleta, esperaba <Variable> <Operador> <valor>", None)
         if cond2[0].tipo != 'Variable' or cond2[1].tipo != 'Comparacion' or cond2[2].tipo not in ('Numero', 'Variable'):
             return ("condicion2 mal formada, esperaba <Variable> <Operador> <valor>", None)
+        
+        # Validar semántica: variable en cond2 debe existir
+        if not self.tabla_simbolos.existe(cond2[0].valor):
+            return (None, f"Variable '{cond2[0].valor}' en condicion2 no declarada")
             
         # cond3: <Variable> <Incremento>
         if len(cond3) < 2:
             return ("condicion3 incompleta, esperaba <Variable> <Incremento>", None)
-        if cond3[0].tipo != 'Variable' or cond3[1].tipo != 'Incremento':
+        if (cond3[0].tipo == 'Variable' and cond3[1].tipo == 'Incremento') or \
+           (cond3[0].tipo == 'Incremento' and cond3[1].tipo == 'Variable'):
+            nombre_inc = cond3[0].valor if cond3[0].tipo == 'Variable' else cond3[1].valor
+            if not self.tabla_simbolos.existe(nombre_inc):
+                return (None, f"Variable '{nombre_inc}' en condicion3 no declarada")
+        else:
             return ("condicion3 mal formada, esperaba <Variable> ++/--", None)
             
         return (None, None)
