@@ -42,7 +42,7 @@ class CompiladorCpp:
     }
 
     PALABRAS_RESERVADAS = {
-        'main', 'if', 'else', 'while', 'for', 'do', 'switch', 'case',
+        'main', 'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'default',
         'break', 'continue', 'void', 'true', 'false',
         'cout', 'cin', 'endl', 'include', 'using', 'namespace', 'std',
     }
@@ -62,7 +62,9 @@ class CompiladorCpp:
         (?P<Extraccion>>>)             |
         (?P<And>&&)                    |
         (?P<Or>\|\|)                   |
+        (?P<Comparacion><=|>=|==|!=|<|>) |
         (?P<Asignacion>=)              |
+        (?P<Incremento>\+\+|--)        |
         (?P<Suma>\+)                   |
         (?P<Resta>-)                   |
         (?P<Multiplicar>\*)            |
@@ -212,9 +214,15 @@ class CompiladorCpp:
             return ('while', f"{linea_limpia} // ciclo while", True)
 
         # for ( ... ) {
-        if self._es_patron_for(tokens):
-            err = self._validar_ciclo_semantico(tokens)
-            if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err)}", False)
+        if tokens[0].tipo == 'ParenAbre' and any(t.valor == 'for' for t in tokens):
+             return ('error', f"{linea_limpia} // {obtener_error_semantico(6, 'Orden incorrecto, keyword for desplazado')}", False)
+
+        if tokens[0].valor == 'for':
+            err_sint, err_sem = self._validar_for_sintactico(tokens)
+            if err_sint:
+                return ('error', f"{linea_limpia} // Error sintáctico: {err_sint}", False)
+            if err_sem:
+                 return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err_sem)}", False)
             return ('for', f"{linea_limpia} // ciclo for", True)
 
         # return expr ;
@@ -222,34 +230,58 @@ class CompiladorCpp:
             valor_ret = ' '.join(t.valor for t in tokens[1:-1])
             return ('return', f"{linea_limpia} // retorno: {valor_ret}", True)
 
-        # Reglas Semánticas switch/case
-        if len(tokens) >= 4 and tokens[0].tipo == 'ParenAbre' and tokens[1].tipo == 'Variable' and tokens[2].tipo == 'ParenCierra' and tokens[3].valor == 'switch':
+        # break ;
+        if tokens[0].valor == 'break':
+            if len(tokens) < 2 or tokens[1].tipo != 'PuntoComa':
+                return ('error', f"{linea_limpia} // Error sintáctico: break debe terminar con ;", False)
+            return ('break', f"{linea_limpia} // interrupción de flujo", True)
+
+        # default :
+        if tokens[0].valor == 'default':
+            if len(tokens) < 2 or tokens[1].tipo != 'DosPuntos':
+                return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después de default", False)
+            return ('default', f"{linea_limpia} // caso por defecto de switch", True)
+
+        # ─── SWITCH ───
+        if tokens[0].valor == 'switch':
+            # Error: switch sin paréntesis abre, e.g. "switch opcion {"
+            if len(tokens) < 2 or tokens[1].tipo != 'ParenAbre':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(4)} — falta '(' en switch", False)
+            # Error: switch( sin cierre, e.g. "switch(opcion {"
+            if len(tokens) < 3 or tokens[2].tipo not in ('Variable', 'Numero', 'Caracter'):
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(5)} — switch espera una variable o constante", False)
+            if len(tokens) < 4 or tokens[3].tipo != 'ParenCierra':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(4)} — falta ')' en switch", False)
+            # Error: sin llave abre
+            if len(tokens) < 5 or tokens[4].tipo != 'LlaveAbre':
+                return ('error', f"{linea_limpia} // {obtener_error_sintactico(9)} — falta '{{' en switch", False)
+            # Error semántico: variable del switch no declarada
+            if tokens[2].tipo == 'Variable' and not self.tabla_simbolos.existe(tokens[2].valor):
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(1, tokens[2].valor)} — variable no declarada en switch", False)
+            return ('switch', f"{linea_limpia} // estructura de control switch", True)
+
+        # Orden incorrecto: (variable) switch  → la variable aparece antes que switch
+        if (len(tokens) >= 2 and
+                tokens[0].tipo in ('Variable', 'ParenAbre') and
+                any(t.valor == 'switch' for t in tokens)):
             return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto, esperaba switch(variable)')}", False)
 
+        # Orden incorrecto: break case  o  case break
         if len(tokens) >= 2 and tokens[0].valor == 'break' and tokens[1].valor == 'case':
-            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: break case')}", False)
-            
-        if len(tokens) >= 3 and tokens[0].valor == 'case' and tokens[1].valor == 'break':
-            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: case break')}", False)
+            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: break antes de case')}", False)
 
-        # Reglas Sintácticas switch/case
-        if tokens[0].valor == 'switch':
-            if len(tokens) < 5 or tokens[4].tipo != 'LlaveAbre':
-                return ('error', f"{linea_limpia} // {obtener_error_sintactico(9)} para switch", False)
-            if tokens[1].tipo != 'ParenAbre' or tokens[3].tipo != 'ParenCierra':
-                return ('error', f"{linea_limpia} // {obtener_error_sintactico(4)} o '(' faltante", False)
-            if tokens[2].tipo != 'Variable':
-                return ('error', f"{linea_limpia} // {obtener_error_sintactico(5)} para switch", False)
-            return ('switch', f"{linea_limpia} // estructura de control switch", True)
-            
+        if len(tokens) >= 3 and tokens[0].valor == 'case' and tokens[2].valor == 'break':
+            return ('error', f"{linea_limpia} // {obtener_error_semantico(5, 'Orden incorrecto: break dentro de etiqueta case')}", False)
+
+        # ─── CASE ───
         if tokens[0].valor == 'case':
-            if len(tokens) < 2 or tokens[1].tipo != 'DosPuntos':
-                return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después de case", False)
-            if tokens[-1].tipo != 'PuntoComa':
-                return ('error', f"{linea_limpia} // {obtener_error_sintactico(1)} al final de case", False)
-            if tokens[-2].valor != 'break':
-                return ('error', f"{linea_limpia} // Error sintáctico: la instrucción case debe terminar con break;", False)
-            return ('case', f"{linea_limpia} // caso de switch", True)
+            if len(tokens) < 3:
+                return ('error', f"{linea_limpia} // Error sintáctico: case incompleto, esperaba 'case <valor>:'", False)
+            if tokens[1].tipo not in ('Numero', 'Cadena', 'Caracter', 'Variable', 'Booleano', 'PalabraReservada'):
+                return ('error', f"{linea_limpia} // Error sintáctico: case espera un valor constante o variable", False)
+            if tokens[2].tipo != 'DosPuntos':
+                return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después del valor en case", False)
+            return ('case', f"{linea_limpia} // caso de switch: {tokens[1].valor}", True)
 
         return ('no_identificado', f"{linea_limpia} // {obtener_error_sintactico(6)}", False)
 
@@ -409,12 +441,57 @@ class CompiladorCpp:
         # Se reutiliza parte de la lógica de flujo
         if tokens[0].valor == 'while':
             return self._validar_flujo_semantico(tokens)
-        elif tokens[0].valor == 'for':
-            # Contar variables no declaradas o puntos y coma faltantes si no se declara var internal.
-            vars_dentro = [t for t in tokens if t.tipo == 'Variable']
-            # Ojo: For permite crear variables nuevas y demás, 
-            # esta validación es básica, garantizando que el if hay algo de cuerpo de for.
-            if len(tokens) <= 6:
-                return "Estructura de for incompleta"
         return None
+
+    def _validar_for_sintactico(self, tokens):
+        """ Control de sintaxis y semántica para for """
+        if len(tokens) < 3 or tokens[1].tipo != 'ParenAbre':
+             return ("falta '(' en for", None)
+             
+        if tokens[-1].tipo != 'LlaveAbre':
+             return (f"{obtener_error_sintactico(9)} para for", None)
+             
+        if tokens[-2].tipo != 'ParenCierra':
+             return (f"{obtener_error_sintactico(4)} o ')' faltante", None)
+
+        interior = tokens[2:-2]
+        
+        condiciones = []
+        actual = []
+        for t in interior:
+            if t.tipo == 'PuntoComa':
+                condiciones.append(actual)
+                actual = []
+            else:
+                actual.append(t)
+        condiciones.append(actual)
+        
+        if len(condiciones) != 3:
+            return ("estructura de for incompleta, se esperaban 3 partes separadas por ;", None)
+            
+        cond1, cond2, cond3 = condiciones
+        
+        # Validar semántica de orden incorrecto
+        if cond1 and cond1[0].tipo != 'TipoDato':
+            return (None, "condicion1 debe iniciar con tipo de dato (e.g., int x=0)")
+            
+        # cond1: <TipoDato> <Variable> <Asignacion> <Numero/...>
+        if len(cond1) < 4:
+            return ("condicion1 incompleta, esperaba <TipoDato> <Variable> = <valor>", None)
+        if cond1[0].tipo != 'TipoDato' or cond1[1].tipo != 'Variable' or cond1[2].tipo != 'Asignacion' or cond1[3].tipo not in ('Numero', 'Variable', 'Caracter'):
+            return ("condicion1 mal formada, esperaba <TipoDato> <Variable> = <valor>", None)
+            
+        # cond2: <Variable> <Comparacion> <Numero/...>
+        if len(cond2) < 3:
+            return ("condicion2 incompleta, esperaba <Variable> <Operador> <valor>", None)
+        if cond2[0].tipo != 'Variable' or cond2[1].tipo != 'Comparacion' or cond2[2].tipo not in ('Numero', 'Variable'):
+            return ("condicion2 mal formada, esperaba <Variable> <Operador> <valor>", None)
+            
+        # cond3: <Variable> <Incremento>
+        if len(cond3) < 2:
+            return ("condicion3 incompleta, esperaba <Variable> <Incremento>", None)
+        if cond3[0].tipo != 'Variable' or cond3[1].tipo != 'Incremento':
+            return ("condicion3 mal formada, esperaba <Variable> ++/--", None)
+            
+        return (None, None)
 
