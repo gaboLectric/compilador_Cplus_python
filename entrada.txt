@@ -1,9 +1,11 @@
 int main() {
 
-	int x;
+	int x; // esta es una variable entera
 	double y;
 	string nombre;
 	bool activo;
+	string opcion;
+
 	x = 10;
 	y = 3.14;
 	nombre = "Gabriel";
@@ -25,7 +27,11 @@ int main() {
 
 	switch(opcion) {
         case 1:
-            cout << "Eligio la opcion 1" << endl;
+            if (5 > x)  {
+				cout << x ;
+			} else {
+			cout << "menor" ;
+			};
             
         case 2:
             cout << "Eligio la opcion 2" << endl;

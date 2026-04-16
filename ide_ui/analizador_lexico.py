@@ -83,10 +83,12 @@ class CompiladorCpp:
     def __init__(self):
         self.automata = Automata()
         self.tabla_simbolos = TablaSimbolos()
+        self.en_comentario_bloque = False
 
     def reset(self):
         self.automata = Automata()
         self.tabla_simbolos = TablaSimbolos()
+        self.en_comentario_bloque = False
 
     # ─── TOKENIZACIÓN ───
 
@@ -124,12 +126,45 @@ class CompiladorCpp:
         if not linea_limpia:
             return ('vacia', None, None)
 
+        # Manejo de comentarios de bloque Multilínea (Estado Global)
+        if self.en_comentario_bloque:
+            if '*/' in linea_limpia:
+                partes = linea_limpia.split('*/', 1)
+                self.en_comentario_bloque = False
+                # Si después de */ hay más código, analizar esa parte
+                if partes[1].strip():
+                    return self.analizar_linea(partes[1], num_linea)
+                return ('comentario', f"{linea_limpia} // fin de comentario de bloque", True)
+            return ('comentario', f"{linea_limpia} // dentro de bloque de comentario", True)
+
+        if '/*' in linea_limpia and '*/' not in linea_limpia:
+            self.en_comentario_bloque = True
+            # Podría haber código antes del /*
+            parte_codigo = linea_limpia.split('/*', 1)[0].strip()
+            if parte_codigo:
+                # Nota: Esto es simplificado, asume que el /* es lo último relevante de la línea
+                pass 
+            return ('comentario', f"{linea_limpia} // inicio de comentario de bloque", True)
+
         tokens_todos = self.tokenizar(linea_limpia)
         if not tokens_todos:
             return ('vacia', None, None)
 
-        # Filtrar comentarios para el análisis lógico, pero conservarlos para el reporte
+        # Filtrar comentarios para el análisis lógico
         tokens = [t for t in tokens_todos if t.tipo != 'Comentario']
+
+        # --- PRE-REGISTRO PARA EVITAR CASCADA DE ERRORES ---
+        if len(tokens) >= 3 and tokens[0].tipo == 'TipoDato' and tokens[1].tipo == 'Variable' and tokens[2].tipo == 'PuntoComa':
+            tipo_dato = tokens[0].valor
+            nombre_var = tokens[1].valor
+            self.tabla_simbolos.agregar(nombre_var, tipo_dato, num_linea)
+
+        # Detectar posible error de comentario (barra sola /) 
+        # Si vemos una / que no es comentario y causa que la línea no encaje
+        if any(t.tipo == 'Dividir' or (t.tipo == 'Invalido' and t.valor == '/') for t in tokens_todos):
+             # Solo si no hay // o /* antes
+             if '//' not in linea_limpia and '/*' not in linea_limpia:
+                  return ('error', f"{linea_limpia} // Error sintáctico: Barra inclinada '/' huérfana. ¿Buscaba escribir '//' para un comentario?", False)
         
         if not tokens: # Solo había comentarios
             return ('comentario', f"{linea_limpia}", True)
@@ -140,28 +175,24 @@ class CompiladorCpp:
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveAbre':
             return ('apertura', f"{linea_limpia} // apertura de bloque", True)
 
-        # Validación: No usar palabras reservadas como identificadores
-        for t in tokens:
-            if t.tipo == 'PalabraReservada' or t.tipo == 'TipoDato':
-                # Si está en una posición donde debería haber una variable
-                # Ejemplo: int if;  -> tokens[1] es PalabraReservada
-                if len(tokens) >= 2 and tokens[0].tipo == 'TipoDato' and t == tokens[1]:
-                    return ('error', f"{linea_limpia} // {obtener_error_semantico(5, f'No puedes usar la palabra reservada {t.valor} como nombre de variable')}", False)
-
+        # Caso especial: }; (cierre con punto y coma opcional)
+        if len(tokens) == 2 and tokens[0].tipo == 'LlaveCierra' and tokens[1].tipo == 'PuntoComa':
+            return ('cierre', f"{linea_limpia} // cierre de bloque con ;", True)
 
         if self._es_patron_main(tokens):
             tipo_ret = tokens[0].valor
             return ('main', f"{linea_limpia} // función principal, retorna {tipo_ret}", True)
 
+        # Validación: No usar palabras reservadas como identificadores (Solo en declaraciones)
+        if self._es_patron_declaracion(tokens) or self._es_declaracion_sin_punto_coma(tokens):
+             nombre_var = tokens[1].valor
+             if tokens[1].tipo in ('PalabraReservada', 'TipoDato'):
+                  return ('error', f"{linea_limpia} // {obtener_error_semantico(5, f'No puedes usar la palabra reservada {nombre_var} como nombre de variable')}", False)
+
+
         if self._es_patron_declaracion(tokens):
-            tipo_dato = tokens[0].valor
-            nombre_var = tokens[1].valor
-            desc = self.DESCRIPCION_TIPO.get(tipo_dato, tipo_dato)
-            exito, msg = self.tabla_simbolos.agregar(nombre_var, tipo_dato, num_linea)
-            mensaje = f"{linea_limpia} // {desc}, variable {nombre_var}"
-            if not exito:
-                mensaje += f", {msg}"
-            return ('declaracion', mensaje, True)
+            return ('declaracion', f"{linea_limpia} // declaración exitosa", True)
+
 
         if self._es_declaracion_sin_punto_coma(tokens):
             return ('error', f"{linea_limpia} // {obtener_error_sintactico(1)}", False)
