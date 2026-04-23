@@ -572,6 +572,9 @@ class MainWindow(QMainWindow):
             return
         
         self.compiler.reset()
+        # Primero analizar declaraciones para llenar la tabla de símbolos
+        self.compiler.analizar_declaraciones(codigo)
+        # Luego generar árboles
         resultado = self.compiler.generar_arboles(codigo)
         self.output_tree.setPlainText('\n'.join(resultado['resultados']))
         self.output_tabs.setCurrentIndex(3)  # Ir a pestaña Árbol

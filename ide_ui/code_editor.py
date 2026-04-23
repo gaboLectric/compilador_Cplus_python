@@ -115,6 +115,7 @@ class CodeEditor(QPlainTextEdit):
         self.blockCountChanged.connect(self._update_line_number_area_width)
         self.updateRequest.connect(self._update_line_number_area)
         self.cursorPositionChanged.connect(self._highlight_current_line)
+        self.cursorPositionChanged.connect(self._highlight_matching_brackets)
         
         # Configurar fuente
         font = QFont("JetBrains Mono", 12)
@@ -230,3 +231,96 @@ class CodeEditor(QPlainTextEdit):
         """Retorna (línea, columna) actual del cursor."""
         cursor = self.textCursor()
         return cursor.blockNumber() + 1, cursor.columnNumber() + 1
+    
+    def _highlight_matching_brackets(self):
+        """Resalta el par de brackets/paréntesis/corchetes correspondiente."""
+        extra_selections = []
+        cursor = self.textCursor()
+        if not cursor.isNull():
+            pos = cursor.position()
+            text = self.toPlainText()
+            
+            brackets = {
+                '(': ')',
+                ')': '(',
+                '{': '}',
+                '}': '{',
+                '[': ']',
+                ']': '['
+            }
+            
+            found_bracket = None
+            found_pos = None
+            
+            # Verificar carácter antes del cursor
+            if pos > 0 and pos <= len(text):
+                char_before = text[pos - 1]
+                if char_before in brackets:
+                    found_bracket = char_before
+                    found_pos = pos - 1
+            
+            # Si no hay bracket antes, verificar carácter después
+            if found_bracket is None and pos < len(text):
+                char_after = text[pos]
+                if char_after in brackets:
+                    found_bracket = char_after
+                    found_pos = pos
+            
+            if found_bracket is not None:
+                matching_char = brackets[found_bracket]
+                match_pos = self._find_matching_bracket(text, found_pos, found_bracket, matching_char)
+                
+                if match_pos is not None and match_pos != found_pos:
+                    # Resaltar el bracket actual
+                    selection1 = QTextEdit.ExtraSelection()
+                    cursor1 = QTextCursor(self.document())
+                    cursor1.setPosition(found_pos)
+                    cursor1.setPosition(found_pos + 1, QTextCursor.KeepAnchor)
+                    selection1.cursor = cursor1
+                    bracket_color = QColor(COLORS['accent_cyan'])
+                    bracket_color.setAlpha(150)
+                    selection1.format.setBackground(bracket_color)
+                    extra_selections.append(selection1)
+                    
+                    # Resaltar el bracket correspondiente
+                    selection2 = QTextEdit.ExtraSelection()
+                    cursor2 = QTextCursor(self.document())
+                    cursor2.setPosition(match_pos)
+                    cursor2.setPosition(match_pos + 1, QTextCursor.KeepAnchor)
+                    selection2.cursor = cursor2
+                    selection2.format.setBackground(bracket_color)
+                    extra_selections.append(selection2)
+        
+        # Primero resaltar la línea actual
+        self._highlight_current_line()
+        
+        # Agregar selecciones de brackets
+        current_selections = self.extraSelections()
+        extra_selections.extend(current_selections)
+        self.setExtraSelections(extra_selections)
+    
+    def _find_matching_bracket(self, text, start_pos, open_char, close_char):
+        """Encuentra la posición del bracket correspondiente."""
+        is_opening = open_char in '({['
+        stack = 0
+        
+        if is_opening:
+            # Buscar hacia adelante para encontrar el bracket de cierre
+            for i in range(start_pos + 1, len(text)):
+                if text[i] == open_char:
+                    stack += 1
+                elif text[i] == close_char:
+                    if stack == 0:
+                        return i
+                    stack -= 1
+        else:
+            # Buscar hacia atrás para encontrar el bracket de apertura
+            for i in range(start_pos - 1, -1, -1):
+                if text[i] == open_char:
+                    if stack == 0:
+                        return i
+                    stack -= 1
+                elif text[i] == close_char:
+                    stack += 1
+        
+        return None

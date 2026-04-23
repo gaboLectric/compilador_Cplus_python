@@ -84,11 +84,19 @@ class CompiladorCpp:
         self.automata = Automata()
         self.tabla_simbolos = TablaSimbolos()
         self.en_comentario_bloque = False
+        self.cases_switch = set()  # Track case values to detect duplicates
+        self.en_switch = False  # Track if we're inside a switch block
+        self.pila_estructuras = []  # Track nested structures (while, if, for, switch)
+        self.lineas_buffer = []  # Buffer for multi-line structure validation
 
     def reset(self):
         self.automata = Automata()
         self.tabla_simbolos = TablaSimbolos()
         self.en_comentario_bloque = False
+        self.cases_switch = set()
+        self.en_switch = False
+        self.pila_estructuras = []
+        self.lineas_buffer = []
 
     # ─── TOKENIZACIÓN ───
 
@@ -160,8 +168,8 @@ class CompiladorCpp:
             self.tabla_simbolos.agregar(nombre_var, tipo_dato, num_linea)
 
         # Detectar posible error de comentario (barra sola /) 
-        # Si vemos una / que no es comentario y causa que la línea no encaje
-        if any(t.tipo == 'Dividir' or (t.tipo == 'Invalido' and t.valor == '/') for t in tokens_todos):
+        # Solo reportar si la "/" está realmente huérfana (no es parte de una expresión válida)
+        if any(t.tipo == 'Invalido' and t.valor == '/' for t in tokens_todos):
              # Solo si no hay // o /* antes
              if '//' not in linea_limpia and '/*' not in linea_limpia:
                   return ('error', f"{linea_limpia} // Error sintáctico: Barra inclinada '/' huérfana. ¿Buscaba escribir '//' para un comentario?", False)
@@ -170,6 +178,13 @@ class CompiladorCpp:
             return ('comentario', f"{linea_limpia}", True)
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveCierra':
+            # Exit switch block if we were in one
+            if self.en_switch:
+                self.en_switch = False
+                self.cases_switch = set()
+            # Pop from structure stack
+            if self.pila_estructuras:
+                self.pila_estructuras.pop()
             return ('cierre', f"{linea_limpia} // cierre de bloque", True)
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveAbre':
@@ -249,6 +264,14 @@ class CompiladorCpp:
         if self._es_patron_if(tokens):
             err = self._validar_flujo_semantico(tokens)
             if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(5, err)}", False)
+            # Check if this if is nested inside while
+            if self.pila_estructuras and self.pila_estructuras[-1]['tipo'] == 'while':
+                # Validate nested if syntax: must have opening brace
+                if tokens[-1].tipo != 'LlaveAbre':
+                    return ('error', f"{linea_limpia} // {obtener_error_sintactico(9)} — if anidado en while requiere '{{'", False)
+                self.pila_estructuras.append({'tipo': 'if', 'linea': num_linea, 'padre': 'while'})
+            else:
+                self.pila_estructuras.append({'tipo': 'if', 'linea': num_linea})
             return ('if', f"{linea_limpia} // estructura condicional if", True)
 
         # else {  o  } else {
@@ -259,6 +282,8 @@ class CompiladorCpp:
         if self._es_patron_while(tokens):
             err = self._validar_ciclo_semantico(tokens)
             if err: return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err)}", False)
+            # Track while structure for nested validation
+            self.pila_estructuras.append({'tipo': 'while', 'linea': num_linea})
             return ('while', f"{linea_limpia} // ciclo while", True)
 
         # for ( ... ) {
@@ -316,6 +341,9 @@ class CompiladorCpp:
             # Error semántico: variable del switch no declarada
             if tokens[2].tipo == 'Variable' and not self.tabla_simbolos.existe(tokens[2].valor):
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(1, tokens[2].valor)} — variable no declarada en switch", False)
+            # Enter switch block - reset case tracking
+            self.cases_switch = set()
+            self.en_switch = True
             return ('switch', f"{linea_limpia} // estructura de control switch", True)
 
         # Orden incorrecto: (variable) switch  → la variable aparece antes que switch
@@ -339,6 +367,11 @@ class CompiladorCpp:
                 return ('error', f"{linea_limpia} // Error sintáctico: case espera un valor constante o variable", False)
             if tokens[2].tipo != 'DosPuntos':
                 return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después del valor en case", False)
+            # Check for duplicate case values
+            case_valor = tokens[1].valor
+            if self.en_switch and case_valor in self.cases_switch:
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(2, f'Case duplicado: {case_valor} ya declarado')}", False)
+            self.cases_switch.add(case_valor)
             return ('case', f"{linea_limpia} // caso de switch: {tokens[1].valor}", True)
 
         return ('no_identificado', f"{linea_limpia} // {obtener_error_sintactico(6)}", False)
@@ -378,11 +411,12 @@ class CompiladorCpp:
         return (tokens[0].tipo == 'TipoDato' and tokens[1].tipo == 'PuntoComa')
 
     def _es_patron_asignacion(self, tokens):
-        if len(tokens) != 4:
+        """Asignación: variable = expr ; donde expr puede ser compleja"""
+        if len(tokens) < 4:
             return False
-        return (tokens[0].tipo == 'Variable' and tokens[1].tipo == 'Asignacion' and
-                tokens[2].tipo in ('Numero', 'Cadena', 'Caracter', 'Booleano', 'Variable') and
-                tokens[3].tipo == 'PuntoComa')
+        return (tokens[0].tipo == 'Variable' and 
+                tokens[1].tipo == 'Asignacion' and
+                tokens[-1].tipo == 'PuntoComa')
 
     # ─── PATRONES NUEVOS: cout, cin, if, else, while, for, return ───
 
@@ -498,7 +532,36 @@ class CompiladorCpp:
         """ Control de ciclos: asegura estructura mínima coherente."""
         # Se reutiliza parte de la lógica de flujo
         if tokens[0].valor == 'while':
-            return self._validar_flujo_semantico(tokens)
+            # Validar estructura while: while (variable operador constante) {
+            # Debe tener llave de apertura
+            if tokens[-1].tipo != 'LlaveAbre':
+                return "while requiere llave de apertura '{'"
+            # Validar contenido de paréntesis
+            err = self._validar_flujo_semantico(tokens)
+            if err:
+                return err
+            # Validar patrón específico: variable operador constante
+            paren_contenido = []
+            en_parentesis = False
+            for t in tokens:
+                if t.tipo == 'ParenAbre':
+                    en_parentesis = True
+                    continue
+                if t.tipo == 'ParenCierra':
+                    en_parentesis = False
+                    break
+                if en_parentesis:
+                    paren_contenido.append(t)
+            # Validar que tenga al menos 3 elementos: variable operador constante
+            if len(paren_contenido) < 3:
+                return "Condición while incompleta, se esperaba: variable operador constante"
+            # Validar orden: variable operador constante
+            if paren_contenido[0].tipo != 'Variable':
+                return "Condición while debe iniciar con variable"
+            if paren_contenido[1].tipo not in ('Comparacion', 'Suma', 'Resta', 'Multiplicar', 'Dividir'):
+                return "Condición while requiere operador de comparación o aritmético"
+            if paren_contenido[2].tipo not in ('Numero', 'Variable', 'Booleano'):
+                return "Condición while requiere constante o variable después del operador"
         return None
 
     def _validar_for_sintactico(self, tokens, linea_actual=0):

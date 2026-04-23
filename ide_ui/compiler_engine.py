@@ -172,17 +172,26 @@ class CompilerEngine:
         resultados.append("═══ ÁRBOLES SINTÁCTICOS C++ ═══")
         resultados.append("")
 
+        estructuras_control = []
         expresiones_encontradas = []
 
-        for linea in lineas:
+        for i, linea in enumerate(lineas, 1):
             linea_limpia = linea.strip()
             if not linea_limpia or linea_limpia.startswith('//'):
                 continue
+            
+            # Detectar estructuras de control
+            tokens_check = self.compilador.tokenizar(linea_limpia)
+            if tokens_check and tokens_check[0].tipo == 'PalabraReservada':
+                primer_token = tokens_check[0].valor
+                if primer_token in ('while', 'for', 'if', 'switch'):
+                    estructuras_control.append((linea_limpia, primer_token, i))
+                    continue
+            
             # Buscar líneas con operadores aritméticos que parezcan expresiones
             if any(op in linea_limpia for op in ['+', '-', '*', '/']) \
                and linea_limpia not in ('{', '}'):
-                # No considerar declaraciones o palabras reservadas (for, while, if) como expresiones
-                tokens_check = self.compilador.tokenizar(linea_limpia)
+                # No considerar declaraciones o palabras reservadas como expresiones
                 if tokens_check and tokens_check[0].tipo != 'TipoDato' and tokens_check[0].tipo not in ('PalabraReservada', 'PalabraClave'):
                     # Quitar ; al final si existe para parsear la expresión
                     expr = linea_limpia.rstrip(';').strip()
@@ -192,11 +201,51 @@ class CompilerEngine:
                         expr = partes[1].strip()
                     expresiones_encontradas.append((linea_limpia, expr))
 
-        if not expresiones_encontradas:
-            resultados.append("  No se encontraron expresiones para generar árboles.")
-            resultados.append("  (Escribe expresiones como: 3+4*(2-1) )")
-            return {'resultados': resultados, 'arboles': []}
+        # Procesar estructuras de control
+        for linea_orig, tipo_estructura, num_linea in estructuras_control:
+            tokens = self.compilador.tokenizar(linea_orig)
+            
+            try:
+                # Pasar tabla de símbolos al parser para validaciones semánticas
+                parser = ParserCpp(tokens, self.compilador.tabla_simbolos)
+                
+                if tipo_estructura == 'while':
+                    arbol = parser.parse_while()
+                elif tipo_estructura == 'for':
+                    arbol = parser.parse_for(num_linea)
+                elif tipo_estructura == 'if':
+                    arbol = parser.parse_if()
+                elif tipo_estructura == 'switch':
+                    arbol = parser.parse_switch()
+                else:
+                    continue
+                
+                arboles.append((linea_orig, arbol))
+                
+                resultados.append(f"  Estructura: {tipo_estructura.upper()}")
+                resultados.append(f"  Línea: {linea_orig}")
+                
+                # Capturar salida del imprimir
+                old_stdout = sys.stdout
+                sys.stdout = buffer = io.StringIO()
+                arbol.imprimir()
+                tree_str = buffer.getvalue()
+                sys.stdout = old_stdout
+                
+                for line in tree_str.split('\n'):
+                    if line.strip():
+                        resultados.append(f"    {line}")
+                
+                resultados.append("")
+                
+            except SyntaxError as e:
+                resultados.append(f"  Estructura: {tipo_estructura.upper()}")
+                resultados.append(f"  Línea: {linea_orig}")
+                resultados.append(f"    ✗ Error de sintaxis: {e}")
+                resultados.append("")
+                self.last_errors.append(f"{tipo_estructura} '{linea_orig}': {e}")
 
+        # Procesar expresiones aritméticas
         for linea_orig, expr in expresiones_encontradas:
             tokens = self.compilador.tokenizar(expr)
 
@@ -241,6 +290,11 @@ class CompilerEngine:
                 resultados.append(f"    ✗ Error de sintaxis: {e}")
                 resultados.append("")
                 self.last_errors.append(f"Expresión '{expr}': {e}")
+
+        if not estructuras_control and not expresiones_encontradas:
+            resultados.append("  No se encontraron estructuras o expresiones para generar árboles.")
+            resultados.append("  (Escribe expresiones como: 3+4*(2-1) )")
+            resultados.append("  (O estructuras como: while(x<5){}, for(int i=0;i<10;i++), if(x>5){}, switch(x){})")
 
         return {
             'resultados': resultados,

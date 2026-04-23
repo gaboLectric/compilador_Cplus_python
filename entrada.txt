@@ -1,47 +1,60 @@
 int main() {
-
-	int x; // esta es una variable entera
-	double y;
-	string nombre;
-	bool activo;
-	string opcion;
-
-	x = 10;
-	y = 3.14;
-	nombre = "Gabriel";
-	activo = true;
-	cout << "Hola mundo" ;
-	cin >> x;
-	if (5 > x)  {
-		cout << x ;
-	} else {
-		cout << "menor" ;
-	}
-	while (x > 0) {
-		x = 1;
-	}
-
-	for ( int z = 0; z < 5; z++ ) {
-		cout << z;
-	}
-
-	switch(opcion) {
+    int x;
+    int opcion;
+    double y;
+    
+    x = 5;
+    y = 3.14;
+    opcion = 1;
+    
+    while (x > 0) {
+        if (x == 1) {
+            cout << x;
+        }
+        int y;
+        y = 3;
+        while (y > 0) {
+            if (y == 2) {
+                cout << y;
+            }
+        }
+    }
+    
+    for (int z = 0; z < 5; z++) {
+        if (z == 1) {
+            cout << z;
+        }
+    }
+    
+    // If anidado (2 niveles)
+    if (x > 0) {
+        if (x == 5) {
+            cout << "x es 5";
+        }
+    }
+    
+    // If anidado (3 niveles)
+    if (opcion > 0) {
+        if (opcion == 1) {
+            if (y > 2.0) {
+                cout << "Triple anidamiento";
+            }
+        }
+    }
+    
+    switch(opcion) {
         case 1:
-            if (5 > x)  {
-				cout << x ;
-			} else {
-			cout << "menor" ;
-			};
-            
+            cout << "Opcion 1";
+            break;
         case 2:
-            cout << "Eligio la opcion 2" << endl;
+            cout << "Opcion 2";
             break;
         case 3:
-            cout << "Eligio la opcion 3" << endl;
+            cout << "Opcion 3";
             break;
         default:
-            cout << "Opcion no valida" << endl;
+            cout << "Opcion no valida";
     }
-	
-	return 0;
+    
+    return 0;
 }
