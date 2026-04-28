@@ -370,7 +370,21 @@ class MainWindow(QMainWindow):
         self.output_errors.setReadOnly(True)
         self.output_errors.setPlaceholderText("Sin errores")
         self.output_tabs.addTab(self.output_errors, "  ⚠  Errores  ")
-        
+
+        # Código Intermedio
+        self.output_intermedio = QPlainTextEdit()
+        self.output_intermedio.setObjectName("outputIntermedio")
+        self.output_intermedio.setReadOnly(True)
+        self.output_intermedio.setPlaceholderText("Código intermedio (TAC)...")
+        self.output_tabs.addTab(self.output_intermedio, "  ⚙  Cód. Intermedio  ")
+
+        # Ensamblador
+        self.output_asm = QPlainTextEdit()
+        self.output_asm.setObjectName("outputAsm")
+        self.output_asm.setReadOnly(True)
+        self.output_asm.setPlaceholderText("Código ensamblador...")
+        self.output_tabs.addTab(self.output_asm, "  🖥  Ensamblador  ")
+
         output_layout.addWidget(self.output_tabs)
         
         # Configurar el splitter
@@ -502,7 +516,17 @@ class MainWindow(QMainWindow):
         self.output_tree.setPlainText(
             '\n'.join(resultado['arboles']['resultados'])
         )
-        
+
+        # Mostrar código intermedio
+        self.output_intermedio.setPlainText(
+            '\n'.join(resultado['intermedio']['resultados'])
+        )
+
+        # Mostrar ensamblador
+        self.output_asm.setPlainText(
+            '\n'.join(resultado['ensamblador']['resultados'])
+        )
+
         # Mostrar resumen en consola
         resumen_lines = resultado['resumen']
         all_output = []
@@ -593,6 +617,8 @@ class MainWindow(QMainWindow):
         self.output_tokens.clear()
         self.output_tree.clear()
         self.output_errors.clear()
+        self.output_intermedio.clear()
+        self.output_asm.clear()
         self.error_indicator.setText("")
         self.status_compile_label.setText("  Listo  ")
         self.status_compile_label.setStyleSheet(f"color: {COLORS['accent_green']}; font-weight: bold;")
