@@ -4,7 +4,7 @@ Gramática:
     expr    -> comparacion ((+ | -) comparacion)*
     comparacion -> termino ((< | > | <= | >= | == | !=) termino)*
     termino -> factor ((* | /) factor)*
-    factor  -> Numero | Variable | ( expr )
+    factor  -> Numero | Variable [ expr ] | Variable | ( expr )
     
     Estructuras de control:
     while   -> while ( expr ) { statement* }
@@ -89,7 +89,17 @@ class ParserCpp:
             return NodoArbol(token)
         elif token.tipo == 'Variable':
             self.avanzar('Variable')
-            return NodoArbol(token)
+            nodo_var = NodoArbol(token)
+            # Array access: var[expr]
+            if self.token_actual and self.token_actual.tipo == 'CorcheteAbre':
+                self.avanzar('CorcheteAbre')
+                nodo_idx = self.expr()
+                self.avanzar('CorcheteCierra')
+                nodo_acc = NodoArbol(TokenCpp('AccesoArreglo', f"{token.valor}[]"))
+                nodo_acc.izquierdo = nodo_var
+                nodo_acc.derecho = nodo_idx
+                return nodo_acc
+            return nodo_var
         elif token.tipo == 'ParenAbre':
             self.avanzar('ParenAbre')
             nodo = self.expr()
