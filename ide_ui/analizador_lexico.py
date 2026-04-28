@@ -239,6 +239,16 @@ class CompiladorCpp:
         if self._es_tipo_sin_variable(tokens):
             return ('error', f"{linea_limpia} // {obtener_error_sintactico(11)}", False)
 
+        # arr[idx] = expr; — array element assignment
+        if (len(tokens) >= 6 and
+                tokens[0].tipo == 'Variable' and
+                tokens[1].tipo == 'CorcheteAbre' and
+                tokens[-1].tipo == 'PuntoComa'):
+            nombre_arr = tokens[0].valor
+            if not self.tabla_simbolos.existe(nombre_arr):
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(1, nombre_arr)}", False)
+            return ('asignacion_arreglo', f"{linea_limpia} // asignación de arreglo: {nombre_arr}[...]", True)
+
         if self._es_patron_asignacion(tokens):
             nombre_var = tokens[0].valor
             valor = tokens[2].valor

@@ -13,6 +13,7 @@ from ide_ui.analizador_lexico import CompiladorCpp
 from ide_ui.parser_cpp import ParserCpp
 from ide_ui.nodo_arbol import NodoArbol
 from ide_ui.tabla_simbolos import TablaSimbolos
+from ide_ui.token_cpp import TokenCpp
 from ide_ui.generador_codigo_intermedio import GeneradorCodigoIntermedio
 from ide_ui.generador_ensamblador import GeneradorEnsamblador
 

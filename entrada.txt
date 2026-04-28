@@ -1,60 +1,30 @@
 int main() {
     int x;
-    int opcion;
+    int arr[5];
+    int i;
     double y;
-    
+
     x = 5;
     y = 3.14;
-    opcion = 1;
-    
+    arr[0] = 10;
+    arr[1] = 20;
+    i = 0;
+
     while (x > 0) {
-        if (x == 1) {
-            cout << x;
-        }
-        int y;
-        y = 3;
-        while (y > 0) {
-            if (y == 2) {
-                cout << y;
-            }
-        }
+        x = x - 1;
     }
-    
+
     for (int z = 0; z < 5; z++) {
-        if (z == 1) {
-            cout << z;
-        }
+        arr[z] = z;
     }
-    
-    // If anidado (2 niveles)
+
+    do {
+        i = i + 1;
+    } while (i < 3);
+
     if (x > 0) {
-        if (x == 5) {
-            cout << "x es 5";
-        }
+        cout << x;
     }
-    
-    // If anidado (3 niveles)
-    if (opcion > 0) {
-        if (opcion == 1) {
-            if (y > 2.0) {
-                cout << "Triple anidamiento";
-            }
-        }
-    }
-    
-    switch(opcion) {
-        case 1:
-            cout << "Opcion 1";
-            break;
-        case 2:
-            cout << "Opcion 2";
-            break;
-        case 3:
-            cout << "Opcion 3";
-            break;
-        default:
-            cout << "Opcion no valida";
-    }
-    
+
     return 0;
 }
