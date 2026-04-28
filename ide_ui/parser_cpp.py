@@ -352,5 +352,51 @@ class ParserCpp:
         # Cuerpo simplificado (los cases se manejan en líneas separadas por el analizador léxico)
         nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '{ cases... }'))
         nodo_switch.agregar_hijo(nodo_cuerpo)
-        
+
         return nodo_switch
+
+    def parse_do_while(self):
+        """Parse: } while ( condition ) ; — the closing line of a do-while"""
+        # Consume '}'
+        self.avanzar('LlaveCierra')
+
+        if not self.token_actual or self.token_actual.valor != 'while':
+            raise SyntaxError("Se esperaba 'while' después de '}'")
+
+        nodo_do = NodoArbol(TokenCpp('PalabraReservada', 'do-while'))
+        self.avanzar('PalabraReservada')
+
+        self.avanzar('ParenAbre')
+
+        # Condition
+        if not self.token_actual or self.token_actual.tipo != 'Variable':
+            raise SyntaxError("Condición do-while debe iniciar con variable")
+
+        var_token = self.token_actual
+        nodo_var = NodoArbol(var_token)
+        self.avanzar('Variable')
+
+        if self.tabla_simbolos and not self.tabla_simbolos.existe(var_token.valor):
+            raise SyntaxError(f"{obtener_error_semantico(1, var_token.valor)}")
+
+        if not self.token_actual or self.token_actual.tipo not in ('Comparacion', 'Suma', 'Resta', 'Multiplicar', 'Dividir'):
+            raise SyntaxError("Condición do-while requiere operador")
+
+        op_token = self.token_actual
+        nodo_op = NodoArbol(op_token)
+        nodo_op.izquierdo = nodo_var
+        self.avanzar(op_token.tipo)
+
+        if not self.token_actual or self.token_actual.tipo not in ('Numero', 'Variable', 'Booleano'):
+            raise SyntaxError("Condición do-while requiere constante o variable")
+
+        const_token = self.token_actual
+        nodo_op.derecho = NodoArbol(const_token)
+        self.avanzar(const_token.tipo)
+
+        nodo_do.agregar_hijo(nodo_op)
+
+        self.avanzar('ParenCierra')
+        self.avanzar('PuntoComa')
+
+        return nodo_do

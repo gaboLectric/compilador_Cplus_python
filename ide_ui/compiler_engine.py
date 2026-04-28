@@ -182,9 +182,15 @@ class CompilerEngine:
             
             # Detectar estructuras de control
             tokens_check = self.compilador.tokenizar(linea_limpia)
+            # Detect "} while(cond);" as do-while closing
+            if (tokens_check and tokens_check[0].tipo == 'LlaveCierra' and
+                    len(tokens_check) >= 4 and
+                    any(t.valor == 'while' for t in tokens_check)):
+                estructuras_control.append((linea_limpia, 'do_while_end', i))
+                continue
             if tokens_check and tokens_check[0].tipo == 'PalabraReservada':
                 primer_token = tokens_check[0].valor
-                if primer_token in ('while', 'for', 'if', 'switch'):
+                if primer_token in ('while', 'for', 'if', 'switch', 'do'):
                     estructuras_control.append((linea_limpia, primer_token, i))
                     continue
             
@@ -217,6 +223,13 @@ class CompilerEngine:
                     arbol = parser.parse_if()
                 elif tipo_estructura == 'switch':
                     arbol = parser.parse_switch()
+                elif tipo_estructura == 'do':
+                    nodo_cuerpo = NodoArbol(TokenCpp('PalabraReservada', 'do'))
+                    nodo_body = NodoArbol(TokenCpp('Cuerpo', '{ ... }'))
+                    nodo_cuerpo.agregar_hijo(nodo_body)
+                    arbol = nodo_cuerpo
+                elif tipo_estructura == 'do_while_end':
+                    arbol = parser.parse_do_while()
                 else:
                     continue
                 
