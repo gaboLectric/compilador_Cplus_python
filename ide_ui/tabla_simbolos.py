@@ -4,6 +4,8 @@ Almacena las variables declaradas: nombre, tipo, línea, valor.
 """
 
 
+import re
+
 from ide_ui.errores import obtener_error_semantico
 
 class TablaSimbolos:
@@ -20,7 +22,11 @@ class TablaSimbolos:
                 return (False, obtener_error_semantico(2, f"'{nombre}' ya es '{prev['tipo']}' en línea {prev['linea']}"))
 
 
-        entrada = {'nombre': nombre, 'tipo': tipo_dato, 'linea': linea, 'valor': None}
+        entrada = {'nombre': nombre, 'tipo': tipo_dato, 'linea': linea, 'valor': None, 'tamano': None}
+        if '[' in tipo_dato:
+            m = re.search(r'\[(\d+)\]', tipo_dato)
+            if m:
+                entrada['tamano'] = int(m.group(1))
         self.simbolos[nombre] = entrada
         self.lista_simbolos.append(entrada)
         return (True, f"Variable '{nombre}' de tipo '{tipo_dato}' registrada")
@@ -41,14 +47,15 @@ class TablaSimbolos:
         if not self.lista_simbolos:
             return "  (Tabla de símbolos vacía)"
         lineas = []
-        lineas.append("  ┌─────────────┬────────────┬────────┬──────────┐")
-        lineas.append("  │  Variable   │  Tipo      │  Línea │  Valor   │")
-        lineas.append("  ├─────────────┼────────────┼────────┼──────────┤")
+        lineas.append("  ┌─────────────┬──────────────┬────────┬──────────┬────────┐")
+        lineas.append("  │  Variable   │  Tipo        │  Línea │  Valor   │ Tamano │")
+        lineas.append("  ├─────────────┼──────────────┼────────┼──────────┼────────┤")
         for s in self.lista_simbolos:
             nombre = s['nombre'].ljust(11)
-            tipo = s['tipo'].ljust(10)
+            tipo = s['tipo'].ljust(12)
             linea = str(s['linea']).center(6)
             valor = str(s['valor'] if s['valor'] is not None else '-').ljust(8)
-            lineas.append(f"  │ {nombre} │ {tipo} │ {linea} │ {valor} │")
-        lineas.append("  └─────────────┴────────────┴────────┴──────────┘")
+            tamano = str(s.get('tamano') or '-').center(6)
+            lineas.append(f"  │ {nombre} │ {tipo} │ {linea} │ {valor} │ {tamano} │")
+        lineas.append("  └─────────────┴──────────────┴────────┴──────────┴────────┘")
         return '\n'.join(lineas)

@@ -205,6 +205,13 @@ class CompiladorCpp:
                   return ('error', f"{linea_limpia} // {obtener_error_semantico(5, f'No puedes usar la palabra reservada {nombre_var} como nombre de variable')}", False)
 
 
+        if self._es_patron_arreglo(tokens):
+            tipo_dato = tokens[0].valor
+            nombre_var = tokens[1].valor
+            tamano = int(tokens[3].valor)
+            self.tabla_simbolos.agregar(nombre_var, f"{tipo_dato}[{tamano}]", num_linea)
+            return ('declaracion_arreglo', f"{linea_limpia} // declaración de arreglo: {nombre_var}[{tamano}]", True)
+
         if self._es_patron_declaracion(tokens):
             return ('declaracion', f"{linea_limpia} // declaración exitosa", True)
 
@@ -393,6 +400,17 @@ class CompiladorCpp:
             return False
         return (tokens[0].tipo == 'TipoDato' and tokens[0].valor != 'void' and
                 tokens[1].tipo == 'Variable' and tokens[2].tipo == 'PuntoComa')
+
+    def _es_patron_arreglo(self, tokens):
+        """int arr[N]; — TipoDato Variable [ Numero ] PuntoComa"""
+        if len(tokens) != 6:
+            return False
+        return (tokens[0].tipo == 'TipoDato' and tokens[0].valor != 'void' and
+                tokens[1].tipo == 'Variable' and
+                tokens[2].tipo == 'CorcheteAbre' and
+                tokens[3].tipo == 'Numero' and '.' not in tokens[3].valor and
+                tokens[4].tipo == 'CorcheteCierra' and
+                tokens[5].tipo == 'PuntoComa')
 
     def _es_declaracion_sin_punto_coma(self, tokens):
         if len(tokens) != 2:
