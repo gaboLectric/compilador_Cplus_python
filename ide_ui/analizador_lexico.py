@@ -177,6 +177,20 @@ class CompiladorCpp:
         if not tokens: # Solo había comentarios
             return ('comentario', f"{linea_limpia}", True)
 
+        # } while (cond); — closing of do-while
+        if (len(tokens) >= 5 and
+                tokens[0].tipo == 'LlaveCierra' and
+                tokens[1].valor == 'while' and
+                tokens[2].tipo == 'ParenAbre'):
+            err = self._validar_flujo_semantico(tokens[1:])
+            if err:
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(6, err)}", False)
+            if tokens[-1].tipo != 'PuntoComa':
+                return ('error', f"{linea_limpia} // Error sintáctico: do-while requiere ';' al final", False)
+            if self.pila_estructuras:
+                self.pila_estructuras.pop()
+            return ('do_while_end', f"{linea_limpia} // fin de ciclo do-while", True)
+
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveCierra':
             # Exit switch block if we were in one
             if self.en_switch:
@@ -331,6 +345,13 @@ class CompiladorCpp:
             if len(tokens) < 2 or tokens[1].tipo != 'DosPuntos':
                 return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después de default", False)
             return ('default', f"{linea_limpia} // caso por defecto de switch", True)
+
+        # do {
+        if tokens[0].valor == 'do':
+            if len(tokens) < 2 or tokens[-1].tipo != 'LlaveAbre':
+                return ('error', f"{linea_limpia} // Error sintáctico: 'do' requiere '{{' al final", False)
+            self.pila_estructuras.append({'tipo': 'do', 'linea': num_linea})
+            return ('do', f"{linea_limpia} // inicio de ciclo do-while", True)
 
         # ─── SWITCH ───
         if tokens[0].valor == 'switch':
