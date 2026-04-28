@@ -1,30 +1,71 @@
 int main() {
+    // === DECLARACIONES ===
     int x;
-    int arr[5];
-    int i;
+    int contador;
     double y;
+    bool activo;
 
-    x = 5;
+    // === ARREGLO ===
+    int arr[5];
+
+    // === ASIGNACIONES ===
+    x = 10;
     y = 3.14;
-    arr[0] = 10;
-    arr[1] = 20;
-    i = 0;
+    activo = true;
+    contador = 0;
 
+    // === ARREGLO: asignacion y acceso ===
+    arr[0] = 100;
+    arr[1] = 200;
+    arr[2] = 300;
+    arr[3] = 400;
+    arr[4] = 500;
+    cout << arr[0];
+    cout << arr[4];
+
+    // === WHILE ===
     while (x > 0) {
         x = x - 1;
     }
 
-    for (int z = 0; z < 5; z++) {
-        arr[z] = z;
+    // === FOR ===
+    for (int i = 0; i < 5; i++) {
+        arr[i] = i;
     }
 
+    // === DO-WHILE ===
     do {
-        i = i + 1;
-    } while (i < 3);
+        contador = contador + 1;
+    } while (contador < 3);
 
+    // === IF / ELSE ===
     if (x > 0) {
         cout << x;
     }
 
+    // === INCREMENT / DECREMENT ===
+    x++;
+    x--;
+    contador++;
+
+    // === SWITCH / CASE ===
+    switch(contador) {
+        case 1:
+            cout << "uno";
+            break;
+        case 2:
+            cout << "dos";
+            break;
+        case 3:
+            cout << "tres";
+            break;
+        default:
+            cout << "otro";
+    }
+
+    // === CIN ===
+    cin >> x;
+
+    // === RETURN ===
     return 0;
 }
