@@ -13,6 +13,8 @@ from ide_ui.analizador_lexico import CompiladorCpp
 from ide_ui.parser_cpp import ParserCpp
 from ide_ui.nodo_arbol import NodoArbol
 from ide_ui.tabla_simbolos import TablaSimbolos
+from ide_ui.generador_codigo_intermedio import GeneradorCodigoIntermedio
+from ide_ui.generador_ensamblador import GeneradorEnsamblador
 
 
 class CompilerEngine:
@@ -315,6 +317,30 @@ class CompilerEngine:
         }
 
     # ═══════════════════════════════════════════════
+    # FASE 4: CÓDIGO INTERMEDIO (TAC)
+    # ═══════════════════════════════════════════════
+
+    def generar_codigo_intermedio(self, codigo):
+        gen = GeneradorCodigoIntermedio(self.compilador)
+        tac = gen.generar(codigo)
+        return {
+            'tac': tac,
+            'resultados': [gen.formato_texto()],
+        }
+
+    # ═══════════════════════════════════════════════
+    # FASE 5: GENERACIÓN DE ENSAMBLADOR
+    # ═══════════════════════════════════════════════
+
+    def generar_ensamblador(self, tac):
+        gen = GeneradorEnsamblador()
+        asm = gen.generar(tac)
+        return {
+            'asm': asm,
+            'resultados': [gen.formato_texto()],
+        }
+
+    # ═══════════════════════════════════════════════
     # COMPILACIÓN COMPLETA
     # ═══════════════════════════════════════════════
 
@@ -324,6 +350,8 @@ class CompilerEngine:
         resultado_decl = self.analizar_declaraciones(codigo)
         resultado_expr = self.analizar_expresiones(codigo)
         resultado_arbol = self.generar_arboles(codigo)
+        resultado_intermedio = self.generar_codigo_intermedio(codigo)
+        resultado_ensamblador = self.generar_ensamblador(resultado_intermedio['tac'])
 
         total_errores = len(self.last_errors)
         total_warnings = len(self.last_warnings)
@@ -348,6 +376,8 @@ class CompilerEngine:
             'declaraciones': resultado_decl,
             'expresiones': resultado_expr,
             'arboles': resultado_arbol,
+            'intermedio': resultado_intermedio,
+            'ensamblador': resultado_ensamblador,
             'resumen': resumen,
             'total_errores': total_errores,
             'total_warnings': total_warnings,
