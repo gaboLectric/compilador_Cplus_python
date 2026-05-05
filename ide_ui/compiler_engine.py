@@ -196,6 +196,11 @@ class CompilerEngine:
                 if primer_token in ('while', 'for', 'if', 'switch', 'do'):
                     estructuras_control.append((linea_limpia, primer_token, i))
                     continue
+                    
+            if tokens_check and tokens_check[0].tipo == 'TipoDato':
+                if len(tokens_check) >= 5 and tokens_check[2].tipo == 'ParenAbre':
+                    estructuras_control.append((linea_limpia, 'funcion', i))
+                    continue
             
             # Buscar líneas con operadores aritméticos que parezcan expresiones
             if any(op in linea_limpia for op in ['+', '-', '*', '/']) \
@@ -233,6 +238,8 @@ class CompilerEngine:
                     arbol = nodo_cuerpo
                 elif tipo_estructura == 'do_while_end':
                     arbol = parser.parse_do_while()
+                elif tipo_estructura == 'funcion':
+                    arbol = parser.parse_funcion()
                 else:
                     continue
                 

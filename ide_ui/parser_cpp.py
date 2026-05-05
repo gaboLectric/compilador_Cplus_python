@@ -450,3 +450,45 @@ class ParserCpp:
         self.avanzar('PuntoComa')
 
         return nodo_do
+
+    def parse_funcion(self):
+        """Parse: TipoDato identificador ( ... ) {"""
+        if self.token_actual.tipo != 'TipoDato':
+            raise SyntaxError("Se esperaba un tipo de dato para la función")
+        
+        nodo_func = NodoArbol(self.token_actual)
+        self.avanzar('TipoDato')
+        
+        if self.token_actual.tipo not in ('Variable', 'PalabraReservada'):
+            raise SyntaxError("Se esperaba el nombre de la función")
+        
+        nodo_nombre = NodoArbol(self.token_actual)
+        nodo_func.agregar_hijo(nodo_nombre)
+        self.avanzar(self.token_actual.tipo)
+        
+        nodo_func.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
+        self.avanzar('ParenAbre')
+        
+        nodo_params = NodoArbol(TokenCpp('Parametros', '...'))
+        while self.token_actual and self.token_actual.tipo != 'ParenCierra' and self.token_actual.tipo != 'Fin':
+            nodo_params.agregar_hijo(NodoArbol(self.token_actual))
+            self.avanzar(self.token_actual.tipo)
+            
+        nodo_func.agregar_hijo(nodo_params)
+        
+        if self.token_actual.tipo != 'ParenCierra':
+            raise SyntaxError("Falta cerrar paréntesis ')' en parámetros")
+            
+        nodo_func.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
+        self.avanzar('ParenCierra')
+        
+        if self.token_actual.tipo != 'LlaveAbre':
+            raise SyntaxError("Falta abrir llave '{' para la función")
+            
+        nodo_func.agregar_hijo(NodoArbol(TokenCpp('LlaveAbre', '{')))
+        self.avanzar('LlaveAbre')
+        
+        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '...'))
+        nodo_func.agregar_hijo(nodo_cuerpo)
+        
+        return nodo_func

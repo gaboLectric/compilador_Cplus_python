@@ -224,10 +224,15 @@ class CompiladorCpp:
             tipo_dato = tokens[0].valor
             nombre_var = tokens[1].valor
             tamano = int(tokens[3].valor)
-            self.tabla_simbolos.agregar(nombre_var, f"{tipo_dato}[{tamano}]", num_linea)
+            res, msg = self.tabla_simbolos.agregar(nombre_var, f"{tipo_dato}[{tamano}]", num_linea)
+            if not res:
+                return ('error', f"{linea_limpia} // {msg}", False)
             return ('declaracion_arreglo', f"{linea_limpia} // declaración de arreglo: {nombre_var}[{tamano}]", True)
 
         if self._es_patron_declaracion(tokens):
+            res, msg = self.tabla_simbolos.agregar(tokens[1].valor, tokens[0].valor, num_linea)
+            if not res:
+                return ('error', f"{linea_limpia} // {msg}", False)
             return ('declaracion', f"{linea_limpia} // declaración exitosa", True)
             
         if self._es_patron_declaracion_asignacion(tokens):
@@ -273,6 +278,16 @@ class CompiladorCpp:
             nombre_arr = tokens[0].valor
             if not self.tabla_simbolos.existe(nombre_arr):
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(1, nombre_arr)}", False)
+            
+            # Verificación de límites si el índice es una constante
+            if tokens[2].tipo == 'Numero':
+                idx = int(tokens[2].valor)
+                info = self.tabla_simbolos.obtener(nombre_arr)
+                if info and info.get('tamano') is not None:
+                    tamano = info['tamano']
+                    if idx >= tamano:
+                        return ('error', f"{linea_limpia} // {obtener_error_semantico(3, f'Índice {idx} fuera de rango para arreglo {nombre_arr}[{tamano}]')}", False)
+            
             return ('asignacion_arreglo', f"{linea_limpia} // asignación de arreglo: {nombre_arr}[...]", True)
 
         if self._es_patron_asignacion(tokens):
