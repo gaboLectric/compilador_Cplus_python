@@ -47,7 +47,10 @@ class ParserCpp:
             raise SyntaxError(f"{mensaje}. Se esperaba {tipo_esperado}, se encontró {tipo_real}")
 
     def parse(self):
-        return self.expr()
+        nodo = self.expr()
+        if self.token_actual and self.token_actual.tipo != 'Fin':
+            raise SyntaxError(f"Tokens inesperados en la expresión: '{self.token_actual.valor}'")
+        return nodo
 
     def expr(self):
         nodo = self.comparacion()
@@ -101,10 +104,14 @@ class ParserCpp:
                 return nodo_acc
             return nodo_var
         elif token.tipo == 'ParenAbre':
+            nodo_paren = NodoArbol(TokenCpp('Agrupacion', '( )'))
+            nodo_paren.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
             self.avanzar('ParenAbre')
-            nodo = self.expr()
+            nodo_expr = self.expr()
+            nodo_paren.agregar_hijo(nodo_expr)
+            nodo_paren.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
             self.avanzar('ParenCierra')
-            return nodo
+            return nodo_paren
         else:
             raise SyntaxError(f"Token inesperado: {token.tipo} '{token.valor}'. {obtener_error_sintactico(6)}")
 
@@ -121,6 +128,7 @@ class ParserCpp:
         self.avanzar('PalabraReservada')
         
         # (
+        nodo_while.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
         self.avanzar('ParenAbre')
         
         # Condición: variable operador constante
@@ -156,15 +164,25 @@ class ParserCpp:
         nodo_while.agregar_hijo(nodo_op)  # Condición
         
         # )
+        nodo_while.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
         self.avanzar('ParenCierra')
         
         # {
+        nodo_while.agregar_hijo(NodoArbol(TokenCpp('LlaveAbre', '{')))
         self.avanzar('LlaveAbre')
         
-        # Cuerpo (por ahora vacío, se podría extender para parsear statements)
-        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '{ ... }'))
+        # Cuerpo
+        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '...'))
         nodo_while.agregar_hijo(nodo_cuerpo)
         
+        # Posible } si está en la misma línea
+        if self.token_actual and self.token_actual.tipo == 'LlaveCierra':
+            nodo_while.agregar_hijo(NodoArbol(TokenCpp('LlaveCierra', '}')))
+            self.avanzar('LlaveCierra')
+        
+        if self.token_actual and self.token_actual.tipo != 'Fin':
+            raise SyntaxError(f"Tokens inesperados después de '{{': '{self.token_actual.valor}'")
+            
         return nodo_while
 
     def parse_for(self, linea_actual=0):
@@ -176,6 +194,7 @@ class ParserCpp:
         self.avanzar('PalabraReservada')
         
         # (
+        nodo_for.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
         self.avanzar('ParenAbre')
         
         # Parte 1: inicialización (tipo var = valor)
@@ -213,6 +232,7 @@ class ParserCpp:
         nodo_for.agregar_hijo(nodo_init)
         
         # ;
+        nodo_for.agregar_hijo(NodoArbol(TokenCpp('PuntoComa', ';')))
         self.avanzar('PuntoComa')
         
         # Parte 2: condición (var op valor)
@@ -247,6 +267,7 @@ class ParserCpp:
         nodo_for.agregar_hijo(nodo_op_cond)  # Condición
         
         # ;
+        nodo_for.agregar_hijo(NodoArbol(TokenCpp('PuntoComa', ';')))
         self.avanzar('PuntoComa')
         
         # Parte 3: incremento (var++ o ++var)
@@ -280,15 +301,24 @@ class ParserCpp:
         nodo_for.agregar_hijo(nodo_inc)  # Incremento
         
         # )
+        nodo_for.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
         self.avanzar('ParenCierra')
         
         # {
+        nodo_for.agregar_hijo(NodoArbol(TokenCpp('LlaveAbre', '{')))
         self.avanzar('LlaveAbre')
         
         # Cuerpo
-        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '{ ... }'))
+        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '...'))
         nodo_for.agregar_hijo(nodo_cuerpo)
+
+        if self.token_actual and self.token_actual.tipo == 'LlaveCierra':
+            nodo_for.agregar_hijo(NodoArbol(TokenCpp('LlaveCierra', '}')))
+            self.avanzar('LlaveCierra')
         
+        if self.token_actual and self.token_actual.tipo != 'Fin':
+            raise SyntaxError(f"Tokens inesperados después de '{{': '{self.token_actual.valor}'")
+            
         return nodo_for
 
     def parse_if(self):
@@ -300,6 +330,7 @@ class ParserCpp:
         self.avanzar('PalabraReservada')
         
         # (
+        nodo_if.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
         self.avanzar('ParenAbre')
         
         # Condición (reutilizamos expr para expresiones generales)
@@ -307,15 +338,24 @@ class ParserCpp:
         nodo_if.agregar_hijo(nodo_cond)
         
         # )
+        nodo_if.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
         self.avanzar('ParenCierra')
         
         # {
+        nodo_if.agregar_hijo(NodoArbol(TokenCpp('LlaveAbre', '{')))
         self.avanzar('LlaveAbre')
         
         # Cuerpo then
-        nodo_then = NodoArbol(TokenCpp('Then', '{ ... }'))
+        nodo_then = NodoArbol(TokenCpp('Then', '...'))
         nodo_if.agregar_hijo(nodo_then)
         
+        if self.token_actual and self.token_actual.tipo == 'LlaveCierra':
+            nodo_if.agregar_hijo(NodoArbol(TokenCpp('LlaveCierra', '}')))
+            self.avanzar('LlaveCierra')
+
+        if self.token_actual and self.token_actual.tipo != 'Fin':
+            raise SyntaxError(f"Tokens inesperados después de '{{': '{self.token_actual.valor}'")
+            
         return nodo_if
 
     def parse_switch(self):
@@ -327,6 +367,7 @@ class ParserCpp:
         self.avanzar('PalabraReservada')
         
         # (
+        nodo_switch.agregar_hijo(NodoArbol(TokenCpp('ParenAbre', '(')))
         self.avanzar('ParenAbre')
         
         # Variable o constante
@@ -344,14 +385,23 @@ class ParserCpp:
         nodo_switch.agregar_hijo(nodo_var)
         
         # )
+        nodo_switch.agregar_hijo(NodoArbol(TokenCpp('ParenCierra', ')')))
         self.avanzar('ParenCierra')
         
         # {
+        nodo_switch.agregar_hijo(NodoArbol(TokenCpp('LlaveAbre', '{')))
         self.avanzar('LlaveAbre')
         
-        # Cuerpo simplificado (los cases se manejan en líneas separadas por el analizador léxico)
-        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', '{ cases... }'))
+        # Cuerpo simplificado
+        nodo_cuerpo = NodoArbol(TokenCpp('Cuerpo', 'cases...'))
         nodo_switch.agregar_hijo(nodo_cuerpo)
+
+        if self.token_actual and self.token_actual.tipo == 'LlaveCierra':
+            nodo_switch.agregar_hijo(NodoArbol(TokenCpp('LlaveCierra', '}')))
+            self.avanzar('LlaveCierra')
+
+        if self.token_actual and self.token_actual.tipo != 'Fin':
+            raise SyntaxError(f"Tokens inesperados después de '{{': '{self.token_actual.valor}'")
 
         return nodo_switch
 

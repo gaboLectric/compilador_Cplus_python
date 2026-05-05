@@ -162,10 +162,11 @@ class CompiladorCpp:
         tokens = [t for t in tokens_todos if t.tipo != 'Comentario']
 
         # --- PRE-REGISTRO PARA EVITAR CASCADA DE ERRORES ---
-        if len(tokens) >= 3 and tokens[0].tipo == 'TipoDato' and tokens[1].tipo == 'Variable' and tokens[2].tipo == 'PuntoComa':
-            tipo_dato = tokens[0].valor
-            nombre_var = tokens[1].valor
-            self.tabla_simbolos.agregar(nombre_var, tipo_dato, num_linea)
+        if len(tokens) >= 3 and tokens[0].tipo == 'TipoDato' and tokens[1].tipo == 'Variable':
+            if tokens[2].tipo == 'PuntoComa' or tokens[2].tipo == 'Asignacion':
+                tipo_dato = tokens[0].valor
+                nombre_var = tokens[1].valor
+                self.tabla_simbolos.agregar(nombre_var, tipo_dato, num_linea)
 
         # Detectar posible error de comentario (barra sola /) 
         # Solo reportar si la "/" está realmente huérfana (no es parte de una expresión válida)
@@ -228,6 +229,31 @@ class CompiladorCpp:
 
         if self._es_patron_declaracion(tokens):
             return ('declaracion', f"{linea_limpia} // declaración exitosa", True)
+            
+        if self._es_patron_declaracion_asignacion(tokens):
+            tipo_dato = tokens[0].valor
+            nombre_var = tokens[1].valor
+            valor = tokens[3].valor
+            tipo_val = tokens[3].tipo
+            
+            error_tipo = False
+            if tipo_dato in ('int', 'double', 'float') and tipo_val not in ('Numero', 'Variable', 'Booleano'):
+                error_tipo = True
+            elif tipo_dato == 'string' and tipo_val not in ('Cadena', 'Variable'):
+                error_tipo = True
+            elif tipo_dato == 'char' and tipo_val not in ('Caracter', 'Variable'):
+                error_tipo = True
+            elif tipo_dato == 'bool' and tipo_val not in ('Booleano', 'Numero', 'Variable'):
+                error_tipo = True
+                
+            if error_tipo:
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_dato}, entregado {tipo_val}')}", False)
+                
+            if tipo_val == 'Variable' and not self.tabla_simbolos.existe(valor):
+                return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
+                
+            self.tabla_simbolos.asignar_valor(nombre_var, valor)
+            return ('declaracion_asignacion', f"{linea_limpia} // declaración y asignación: {nombre_var} = {valor}", True)
 
 
         if self._es_declaracion_sin_punto_coma(tokens):
@@ -432,6 +458,15 @@ class CompiladorCpp:
         return (tokens[0].tipo == 'TipoDato' and tokens[0].valor != 'void' and
                 tokens[1].tipo == 'Variable' and tokens[2].tipo == 'PuntoComa')
 
+    def _es_patron_declaracion_asignacion(self, tokens):
+        """int x = 5;"""
+        if len(tokens) < 5:
+            return False
+        return (tokens[0].tipo == 'TipoDato' and tokens[0].valor != 'void' and
+                tokens[1].tipo == 'Variable' and
+                tokens[2].tipo == 'Asignacion' and
+                tokens[-1].tipo == 'PuntoComa')
+
     def _es_patron_arreglo(self, tokens):
         """int arr[N]; — TipoDato Variable [ Numero ] PuntoComa"""
         if len(tokens) != 6:
@@ -470,20 +505,46 @@ class CompiladorCpp:
     # ─── PATRONES NUEVOS: cout, cin, if, else, while, for, return ───
 
     def _es_patron_cout(self, tokens):
-        """cout << expr ;  (mín 4 tokens: cout << algo ;)"""
+        """cout << expr ;"""
         if len(tokens) < 4:
             return False
-        return (tokens[0].valor == 'cout' and
-                tokens[1].tipo == 'Insercion' and
-                tokens[-1].tipo == 'PuntoComa')
+        if tokens[0].valor != 'cout' or tokens[1].tipo != 'Insercion' or tokens[-1].tipo != 'PuntoComa':
+            return False
+            
+        interior = tokens[1:-1]
+        for i in range(len(interior)):
+            if interior[i].tipo == 'Insercion':
+                if i + 1 < len(interior) and interior[i+1].tipo == 'Insercion':
+                    return False
+            else:
+                if interior[i].tipo in ('Asignacion', 'PuntoComa', 'LlaveAbre', 'LlaveCierra'):
+                    return False
+                    
+        if interior[-1].tipo == 'Insercion':
+            return False
+            
+        return True
 
     def _es_patron_cin(self, tokens):
         """cin >> variable ;"""
         if len(tokens) < 4:
             return False
-        return (tokens[0].valor == 'cin' and
-                tokens[1].tipo == 'Extraccion' and
-                tokens[-1].tipo == 'PuntoComa')
+        if tokens[0].valor != 'cin' or tokens[1].tipo != 'Extraccion' or tokens[-1].tipo != 'PuntoComa':
+            return False
+            
+        interior = tokens[1:-1]
+        for i in range(len(interior)):
+            if interior[i].tipo == 'Extraccion':
+                if i + 1 < len(interior) and interior[i+1].tipo == 'Extraccion':
+                    return False
+            else:
+                if interior[i].tipo not in ('Variable', 'CorcheteAbre', 'CorcheteCierra', 'Numero'):
+                    return False
+                    
+        if interior[-1].tipo == 'Extraccion':
+            return False
+            
+        return True
 
     def _es_patron_if(self, tokens):
         """if ( ... ) {  o  if ( ... )"""
@@ -517,8 +578,20 @@ class CompiladorCpp:
         """return expr ;  o  return ;"""
         if len(tokens) < 2:
             return False
-        return (tokens[0].valor == 'return' and
-                tokens[-1].tipo == 'PuntoComa')
+        if tokens[0].valor != 'return' or tokens[-1].tipo != 'PuntoComa':
+            return False
+            
+        if len(tokens) > 2:
+            interior = tokens[1:-1]
+            if interior[0].tipo in ('Multiplicar', 'Dividir', 'PuntoComa', 'LlaveAbre', 'LlaveCierra', 'Comparacion', 'Asignacion'):
+                return False
+            if interior[-1].tipo in ('Suma', 'Resta', 'Multiplicar', 'Dividir'):
+                return False
+            for i in range(len(interior) - 1):
+                if interior[i].tipo in ('Suma', 'Resta', 'Multiplicar', 'Dividir') and \
+                   interior[i+1].tipo in ('Suma', 'Resta', 'Multiplicar', 'Dividir'):
+                    return False
+        return True
 
     # ─── VALIDACIÓN DE BALANCE ───
 

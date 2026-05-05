@@ -123,6 +123,15 @@ class GeneradorCodigoIntermedio:
             self.emit(f"DECL {primer.valor} {tokens[1].valor}")
             return
 
+        # Variable declaration with assignment: int x = expr;
+        if (primer.tipo == 'TipoDato' and len(tokens) >= 5 and
+                tokens[1].tipo == 'Variable' and tokens[2].tipo == 'Asignacion' and tokens[-1].tipo == 'PuntoComa'):
+            self.emit(f"DECL {primer.valor} {tokens[1].valor}")
+            expr_tokens = tokens[3:-1]
+            result = self._gen_expr(expr_tokens)
+            self.emit(f"{tokens[1].valor} = {result}")
+            return
+
         # Assignment: x = expr;  or  arr[i] = expr;
         if primer.tipo == 'Variable' and len(tokens) >= 4 and tokens[-1].tipo == 'PuntoComa':
             # arr[i] = expr;
@@ -370,7 +379,7 @@ class GeneradorCodigoIntermedio:
 
     def formato_texto(self):
         """Return TAC as formatted string for display."""
-        lineas = ["═══ CÓDIGO INTERMEDIO (TAC) ═══", ""]
+        lineas = []
         for i, instr in enumerate(self.tac, 1):
             if instr.endswith(':'):
                 lineas.append(f"  {instr}")

@@ -224,4 +224,4 @@ class GeneradorEnsamblador:
             self.data_section.append(f"    {var} dd 0")
 
     def formato_texto(self):
-        return "═══ CÓDIGO ENSAMBLADOR (pseudo-x86) ═══\n\n" + '\n'.join(self.asm)
+        return '\n'.join(self.asm)
