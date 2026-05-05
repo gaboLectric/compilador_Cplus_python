@@ -55,9 +55,10 @@ class GeneradorCodigoIntermedio:
 
         primer = tokens[0]
 
-        # int main() {
-        if primer.tipo == 'TipoDato' and len(tokens) >= 5 and tokens[1].valor == 'main':
-            self.emit("BEGIN main")
+        # Function declaration: int main() { or void printArray(...) {
+        if primer.tipo == 'TipoDato' and len(tokens) >= 5 and tokens[2].tipo == 'ParenAbre':
+            nombre = tokens[1].valor
+            self.emit(f"BEGIN {nombre}")
             return
 
         # Cierre de bloque }
@@ -115,6 +116,19 @@ class GeneradorCodigoIntermedio:
             nombre = tokens[1].valor
             tamano = tokens[3].valor
             self.emit(f"DECL_ARR {tipo} {nombre} {tamano}")
+            return
+
+        # Array declaration with init: int arr[] = { ... };
+        if (primer.tipo == 'TipoDato' and len(tokens) >= 7 and
+                tokens[2].tipo == 'CorcheteAbre' and tokens[3].tipo == 'CorcheteCierra' and
+                tokens[4].tipo == 'Asignacion' and tokens[5].tipo == 'LlaveAbre'):
+            tipo = primer.valor
+            nombre = tokens[1].valor
+            elementos = [t for t in tokens[6:-2] if t.tipo in ('Numero', 'Variable')]
+            tamano = len(elementos)
+            self.emit(f"DECL_ARR {tipo} {nombre} {tamano}")
+            for idx, el in enumerate(elementos):
+                self.emit(f"{nombre}[{idx}] = {el.valor}")
             return
 
         # Variable declaration: int x;
@@ -176,6 +190,19 @@ class GeneradorCodigoIntermedio:
         # cin >> variable;
         if primer.valor == 'cin' and len(tokens) >= 4:
             self.emit(f"READ {tokens[2].valor}")
+            return
+
+        # Function call: func(arg1, arg2);
+        if primer.tipo == 'Variable' and len(tokens) >= 4 and tokens[1].tipo == 'ParenAbre' and tokens[-2].tipo == 'ParenCierra' and tokens[-1].tipo == 'PuntoComa':
+            nombre = primer.valor
+            args_tokens = tokens[2:-2]
+            args = []
+            for t in args_tokens:
+                if t.tipo in ('Variable', 'Numero', 'Caracter', 'Cadena'):
+                    args.append(t.valor)
+            for arg in args:
+                self.emit(f"PARAM {arg}")
+            self.emit(f"CALL {nombre}")
             return
 
         # return expr;
@@ -322,6 +349,18 @@ class GeneradorCodigoIntermedio:
             return ''
         if len(tokens) == 1:
             return tokens[0].valor
+            
+        # sizeof
+        if tokens[0].valor == 'sizeof' and tokens[1].tipo == 'ParenAbre':
+            if tokens[2].tipo == 'Variable' and tokens[3].tipo == 'ParenCierra':
+                var = tokens[2].valor
+                if self.compilador.tabla_simbolos.existe(var):
+                    info = self.compilador.tabla_simbolos.obtener(var)
+                    m = re.search(r'\[(\d+)\]', info['tipo'])
+                    if m:
+                        return str(int(m.group(1)) * 4)
+            return "4"
+            
         # Array access: var [ idx ]
         if (len(tokens) >= 4 and tokens[0].tipo == 'Variable' and
                 tokens[1].tipo == 'CorcheteAbre'):

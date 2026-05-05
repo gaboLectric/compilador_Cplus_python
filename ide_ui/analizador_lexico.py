@@ -237,7 +237,7 @@ class CompiladorCpp:
             tipo_val = tokens[3].tipo
             
             error_tipo = False
-            if tipo_dato in ('int', 'double', 'float') and tipo_val not in ('Numero', 'Variable', 'Booleano'):
+            if tipo_dato in ('int', 'double', 'float') and tipo_val not in ('Numero', 'Variable', 'Booleano', 'ParenAbre', 'PalabraReservada', 'PalabraClave'):
                 error_tipo = True
             elif tipo_dato == 'string' and tipo_val not in ('Cadena', 'Variable'):
                 error_tipo = True
@@ -249,7 +249,7 @@ class CompiladorCpp:
             if error_tipo:
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_dato}, entregado {tipo_val}')}", False)
                 
-            if tipo_val == 'Variable' and not self.tabla_simbolos.existe(valor):
+            if tipo_val == 'Variable' and valor != 'sizeof' and not self.tabla_simbolos.existe(valor):
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
                 
             self.tabla_simbolos.asignar_valor(nombre_var, valor)
@@ -298,7 +298,7 @@ class CompiladorCpp:
                     return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_var}, entregado {tipo_val}')}", False)
 
                 # Regla semántica: si el valor es otra variable, verificar existencia
-                if tipo_val == 'Variable':
+                if tipo_val == 'Variable' and valor != 'sizeof':
                     if not self.tabla_simbolos.existe(valor):
                         return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
 
@@ -381,6 +381,30 @@ class CompiladorCpp:
             if len(tokens) < 2 or tokens[1].tipo != 'DosPuntos':
                 return ('error', f"{linea_limpia} // Error sintáctico: falta ':' después de default", False)
             return ('default', f"{linea_limpia} // caso por defecto de switch", True)
+            
+        if self._es_patron_arreglo_init(tokens):
+            tipo_dato = tokens[0].valor
+            nombre_var = tokens[1].valor
+            elementos = sum(1 for t in tokens[6:-2] if t.tipo == 'Numero' or t.tipo == 'Variable')
+            self.tabla_simbolos.agregar(nombre_var, f"{tipo_dato}[{elementos}]", num_linea)
+            return ('declaracion_arreglo_init', f"{linea_limpia} // declaración e inicialización de arreglo: {nombre_var}[{elementos}]", True)
+
+        if self._es_patron_funcion(tokens):
+            tipo_ret = tokens[0].valor
+            nombre = tokens[1].valor
+            # Registrar parámetros en la tabla de símbolos
+            for k in range(3, len(tokens)-2):
+                if tokens[k].tipo == 'TipoDato' and k+1 < len(tokens) and tokens[k+1].tipo == 'Variable':
+                    tipo_param = tokens[k].valor
+                    if k+3 < len(tokens) and tokens[k+2].tipo == 'CorcheteAbre' and tokens[k+3].tipo == 'CorcheteCierra':
+                        tipo_param += "[]"
+                    self.tabla_simbolos.agregar(tokens[k+1].valor, tipo_param, num_linea)
+            self.pila_estructuras.append({'tipo': 'funcion', 'linea': num_linea})
+            return ('funcion', f"{linea_limpia} // declaración de función {nombre}, retorna {tipo_ret}", True)
+            
+        if self._es_patron_llamada_funcion(tokens):
+            nombre = tokens[0].valor
+            return ('llamada_funcion', f"{linea_limpia} // llamada a función {nombre}", True)
 
         # do {
         if tokens[0].valor == 'do':
@@ -477,6 +501,38 @@ class CompiladorCpp:
                 tokens[3].tipo == 'Numero' and '.' not in tokens[3].valor and
                 tokens[4].tipo == 'CorcheteCierra' and
                 tokens[5].tipo == 'PuntoComa')
+
+    def _es_patron_arreglo_init(self, tokens):
+        """int array[] = { ... } ;"""
+        if len(tokens) < 7:
+            return False
+        return (tokens[0].tipo == 'TipoDato' and
+                tokens[1].tipo == 'Variable' and
+                tokens[2].tipo == 'CorcheteAbre' and
+                tokens[3].tipo == 'CorcheteCierra' and
+                tokens[4].tipo == 'Asignacion' and
+                tokens[5].tipo == 'LlaveAbre' and
+                tokens[-2].tipo == 'LlaveCierra' and
+                tokens[-1].tipo == 'PuntoComa')
+
+    def _es_patron_funcion(self, tokens):
+        """TipoDato identificador ( ... ) {"""
+        if len(tokens) < 5:
+            return False
+        return (tokens[0].tipo == 'TipoDato' and
+                tokens[1].tipo == 'Variable' and
+                tokens[2].tipo == 'ParenAbre' and
+                tokens[-2].tipo == 'ParenCierra' and
+                tokens[-1].tipo == 'LlaveAbre')
+
+    def _es_patron_llamada_funcion(self, tokens):
+        """Variable ( ... ) ;"""
+        if len(tokens) < 4:
+            return False
+        return (tokens[0].tipo == 'Variable' and
+                tokens[1].tipo == 'ParenAbre' and
+                tokens[-2].tipo == 'ParenCierra' and
+                tokens[-1].tipo == 'PuntoComa')
 
     def _es_declaracion_sin_punto_coma(self, tokens):
         if len(tokens) != 2:
