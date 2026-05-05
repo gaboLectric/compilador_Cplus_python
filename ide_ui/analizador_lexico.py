@@ -198,9 +198,18 @@ class CompiladorCpp:
                 self.en_switch = False
                 self.cases_switch = set()
             # Pop from structure stack
+            if self.pila_estructuras and self.pila_estructuras[-1]['tipo'] == 'funcion' and linea_limpia == '}':
+                self.pila_estructuras.pop()
+                return ('cierre_funcion', f"{linea_limpia} // cierre de función", True)
             if self.pila_estructuras:
                 self.pila_estructuras.pop()
             return ('cierre', f"{linea_limpia} // cierre de bloque", True)
+
+        # Validar uso de [] vacío en expresiones
+        if tokens[0].tipo != 'TipoDato':
+            for k in range(len(tokens) - 1):
+                if tokens[k].tipo == 'CorcheteAbre' and tokens[k+1].tipo == 'CorcheteCierra':
+                    return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: [] no puede estar vacío en expresiones", False)
 
         if len(tokens) == 1 and tokens[0].tipo == 'LlaveAbre':
             return ('apertura', f"{linea_limpia} // apertura de bloque", True)
@@ -254,8 +263,15 @@ class CompiladorCpp:
             if error_tipo:
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_dato}, entregado {tipo_val}')}", False)
                 
-            if tipo_val == 'Variable' and valor != 'sizeof' and not self.tabla_simbolos.existe(valor):
-                return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
+            # Validar que todas las variables en la expresión existan
+            for k in range(3, len(tokens)):
+                t = tokens[k]
+                # Check empty brackets in RHS
+                if k < len(tokens)-1 and t.tipo == 'CorcheteAbre' and tokens[k+1].tipo == 'CorcheteCierra':
+                    return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: [] no puede estar vacío en expresiones", False)
+                if t.tipo == 'Variable' and t.valor != 'sizeof':
+                    if not self.tabla_simbolos.existe(t.valor):
+                        return ('error', f"{linea_limpia} // {obtener_error_semantico(1, t.valor)}", False)
                 
             self.tabla_simbolos.asignar_valor(nombre_var, valor)
             return ('declaracion_asignacion', f"{linea_limpia} // declaración y asignación: {nombre_var} = {valor}", True)
@@ -275,6 +291,15 @@ class CompiladorCpp:
                 tokens[0].tipo == 'Variable' and
                 tokens[1].tipo == 'CorcheteAbre' and
                 tokens[-1].tipo == 'PuntoComa'):
+            
+            # Verificar que existe una asignación
+            tiene_asignacion = any(t.tipo == 'Asignacion' for t in tokens)
+            if not tiene_asignacion:
+                return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: Faltaba operador '=' en asignación de arreglo", False)
+            
+            # Verificar expresión vacía ( = ; )
+            if tokens[-2].tipo == 'Asignacion':
+                return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: Expresión vacía después de '='", False)
             nombre_arr = tokens[0].valor
             if not self.tabla_simbolos.existe(nombre_arr):
                 return ('error', f"{linea_limpia} // {obtener_error_semantico(1, nombre_arr)}", False)
@@ -287,6 +312,12 @@ class CompiladorCpp:
                     tamano = info['tamano']
                     if idx >= tamano:
                         return ('error', f"{linea_limpia} // {obtener_error_semantico(3, f'Índice {idx} fuera de rango para arreglo {nombre_arr}[{tamano}]')}", False)
+            
+            # Validar que todas las variables usadas en el índice o valor existan
+            for t in tokens[2:]:
+                if t.tipo == 'Variable' and t.valor != 'sizeof':
+                    if not self.tabla_simbolos.existe(t.valor):
+                        return ('error', f"{linea_limpia} // {obtener_error_semantico(1, t.valor)}", False)
             
             return ('asignacion_arreglo', f"{linea_limpia} // asignación de arreglo: {nombre_arr}[...]", True)
 
@@ -313,9 +344,10 @@ class CompiladorCpp:
                     return ('error', f"{linea_limpia} // {obtener_error_semantico(4, f'Tipo incompatible: esperado {tipo_var}, entregado {tipo_val}')}", False)
 
                 # Regla semántica: si el valor es otra variable, verificar existencia
-                if tipo_val == 'Variable' and valor != 'sizeof':
-                    if not self.tabla_simbolos.existe(valor):
-                        return ('error', f"{linea_limpia} // {obtener_error_semantico(1, valor)} (variable asignada no existe)", False)
+                for t in tokens[2:]:
+                    if t.tipo == 'Variable' and t.valor != 'sizeof':
+                        if not self.tabla_simbolos.existe(t.valor):
+                            return ('error', f"{linea_limpia} // {obtener_error_semantico(1, t.valor)} (variable asignada no existe)", False)
 
                 self.tabla_simbolos.asignar_valor(nombre_var, valor)
                 return ('asignacion', f"{linea_limpia} // asignación: {nombre_var} = {valor}", True)
@@ -403,6 +435,23 @@ class CompiladorCpp:
             elementos = sum(1 for t in tokens[6:-2] if t.tipo == 'Numero' or t.tipo == 'Variable')
             self.tabla_simbolos.agregar(nombre_var, f"{tipo_dato}[{elementos}]", num_linea)
             return ('declaracion_arreglo_init', f"{linea_limpia} // declaración e inicialización de arreglo: {nombre_var}[{elementos}]", True)
+
+        # Validar errores en declaración de función
+        if len(tokens) >= 3 and tokens[0].tipo == 'TipoDato' and tokens[1].tipo == 'Variable' and tokens[2].tipo == 'ParenAbre':
+            if tokens[-1].tipo != 'LlaveAbre':
+                return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: La declaración de la función '{tokens[1].valor}' debe terminar con '{{'", False)
+            if tokens[-2].tipo != 'ParenCierra':
+                return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: Falta cerrar paréntesis ')' antes de '{{' en '{tokens[1].valor}'", False)
+            
+            # Validar comas y nombres de variables en los parámetros
+            en_parametro = False
+            for k in range(3, len(tokens)-2):
+                if tokens[k].tipo == 'TipoDato':
+                    if en_parametro and tokens[k-1].tipo != 'Coma':
+                        return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: Falta ',' separando los parámetros en la función '{tokens[1].valor}'", False)
+                    if k+1 >= len(tokens)-2 or tokens[k+1].tipo != 'Variable':
+                        return ('error', f"{linea_limpia} // ERROR SINTÁCTICO: Falta nombre de variable para el parámetro en la función '{tokens[1].valor}'", False)
+                    en_parametro = True
 
         if self._es_patron_funcion(tokens):
             tipo_ret = tokens[0].valor
@@ -712,8 +761,9 @@ class CompiladorCpp:
                 
             if en_parentesis:
                 elementos_condicion += 1
-                if t.tipo == 'Variable' and not self.tabla_simbolos.existe(t.valor):
-                    return f"Variable '{t.valor}' en condición no declarada"
+                if t.tipo == 'Variable' and t.valor != 'sizeof':
+                    if not self.tabla_simbolos.existe(t.valor):
+                        return f"Variable '{t.valor}' en condición no declarada"
                 if t.tipo in ('TipoDato', 'PalabraReservada', 'PalabraClave'):
                     return f"Léxico inválido en condición ('{t.valor}')"
                     

@@ -16,11 +16,14 @@ class TablaSimbolos:
     def agregar(self, nombre, tipo_dato, linea):
         if nombre in self.simbolos:
             prev = self.simbolos[nombre]
+            # Si se registra en la misma línea con el mismo tipo, permitirlo (por el pre-registro)
+            if prev['linea'] == linea and prev['tipo'] == tipo_dato:
+                return (True, f"Variable '{nombre}' ya registrada en esta línea")
+                
             if prev['tipo'] != tipo_dato:
                 return (False, obtener_error_semantico(3, f"'{nombre}' ya es '{prev['tipo']}' en línea {prev['linea']}"))
             else:
                 return (False, obtener_error_semantico(2, f"'{nombre}' ya es '{prev['tipo']}' en línea {prev['linea']}"))
-
 
         entrada = {'nombre': nombre, 'tipo': tipo_dato, 'linea': linea, 'valor': None, 'tamano': None}
         if '[' in tipo_dato:
